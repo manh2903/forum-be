@@ -35,7 +35,7 @@ const banUser = async (req, res, next) => {
 
     await user.update({ isBanned: true, banReason });
     await AuditLog.create({
-      adminId: req.user.id,
+      userId: req.user.id,
       action: "ban_user",
       targetType: "user",
       targetId: user.id,
@@ -54,7 +54,7 @@ const unbanUser = async (req, res, next) => {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
     await user.update({ isBanned: false, banReason: null });
-    await AuditLog.create({ adminId: req.user.id, action: "unban_user", targetType: "user", targetId: user.id, ipAddress: req.ip });
+    await AuditLog.create({ userId: req.user.id, action: "unban_user", targetType: "user", targetId: user.id, ipAddress: req.ip });
     res.json({ message: "User unbanned", user });
   } catch (err) {
     next(err);
@@ -70,7 +70,7 @@ const changeRole = async (req, res, next) => {
     if (!user) return res.status(404).json({ message: "User not found" });
     await user.update({ role });
     await AuditLog.create({
-      adminId: req.user.id,
+      userId: req.user.id,
       action: "change_role",
       targetType: "user",
       targetId: user.id,
@@ -186,7 +186,7 @@ const getAuditLogs = async (req, res, next) => {
     const { page = 1, limit = 20 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const { count, rows } = await AuditLog.findAndCountAll({
-      include: [{ model: User, as: "admin", attributes: ["id", "username", "avatar"] }],
+      include: [{ model: User, as: "user", attributes: ["id", "username", "avatar"] }],
       order: [["createdAt", "DESC"]],
       limit: parseInt(limit),
       offset,

@@ -5,15 +5,27 @@ const AuditLog = sequelize.define(
   "AuditLog",
   {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-    adminId: { type: DataTypes.INTEGER, allowNull: false },
-    action: { type: DataTypes.STRING(100), allowNull: false },
+    userId: { type: DataTypes.INTEGER, allowNull: true },
+    action: { type: DataTypes.STRING(100), allowNull: false }, // e.g., 'POST', 'DELETE', or custom 'ban_user'
+    method: { type: DataTypes.STRING(10) },
+    endpoint: { type: DataTypes.STRING(255) },
+    requestBody: { type: DataTypes.TEXT },
+    status: { type: DataTypes.INTEGER },
+    duration: { type: DataTypes.INTEGER },
+    ipAddress: { type: DataTypes.STRING(50) },
+    userAgent: { type: DataTypes.TEXT },
+    error: { type: DataTypes.TEXT },
     targetType: { type: DataTypes.STRING(50) },
     targetId: { type: DataTypes.INTEGER },
     details: { type: DataTypes.JSON },
-    ipAddress: { type: DataTypes.STRING(50) },
   },
   {
-    indexes: [{ fields: ["adminId", "createdAt"] }],
+    indexes: [
+      { fields: ["userId"] },
+      { fields: ["createdAt"] },
+      { fields: ["endpoint"] },
+      { fields: ["status"] },
+    ],
   },
 );
 

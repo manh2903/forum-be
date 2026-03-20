@@ -61,7 +61,7 @@ const resolveReport = async (req, res, next) => {
     // Audit log
     const { AuditLog } = require("../models");
     await AuditLog.create({
-      adminId: req.user.id,
+      userId: req.user.id,
       action: "resolve_report",
       targetType: "report",
       targetId: report.id,

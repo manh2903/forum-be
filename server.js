@@ -37,8 +37,10 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use("/uploads", express.static("uploads"));
 app.use(passport.initialize());
 
+const auditLogger = require("./src/middlewares/auditLogger");
+
 // Routes
-app.use("/api", routes);
+app.use("/api", auditLogger, routes);
 
 // Health check
 app.get("/health", (req, res) => res.json({ status: "ok", time: new Date() }));
@@ -52,7 +54,7 @@ async function startServer() {
   try {
     await sequelize.authenticate();
     logger.info("Database connected");
-    await sequelize.sync(); // Chỉ tạo bảng mới nếu chưa có, không ALTER bảng cũ
+    await sequelize.sync(); // Chỉ tạo bảng mới (như AuditLogs vừa drop), không ALTER bảng cũ (như Users)
     logger.info("Database synced");
 
     // Khởi động cron job cập nhật bài viết nổi bật
