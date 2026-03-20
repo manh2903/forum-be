@@ -16,16 +16,12 @@ const AuditLog = sequelize.define(
     userAgent: { type: DataTypes.TEXT },
     error: { type: DataTypes.TEXT },
     targetType: { type: DataTypes.STRING(50) },
-    targetId: { type: DataTypes.INTEGER },
     details: { type: DataTypes.JSON },
+    isDeleted: { type: DataTypes.BOOLEAN, defaultValue: false },
   },
   {
-    indexes: [
-      { fields: ["userId"] },
-      { fields: ["createdAt"] },
-      { fields: ["endpoint"] },
-      { fields: ["status"] },
-    ],
+    indexes: [{ fields: ["userId"] }, { fields: ["createdAt"] }, { fields: ["endpoint"] }, { fields: ["status"] }],
+    defaultScope: { where: { isDeleted: false } },
   },
 );
 
@@ -36,9 +32,11 @@ const SearchHistory = sequelize.define(
     userId: { type: DataTypes.INTEGER, allowNull: false },
     query: { type: DataTypes.STRING(255), allowNull: false },
     resultCount: { type: DataTypes.INTEGER, defaultValue: 0 },
+    isDeleted: { type: DataTypes.BOOLEAN, defaultValue: false },
   },
   {
     indexes: [{ fields: ["userId", "createdAt"] }],
+    defaultScope: { where: { isDeleted: false } },
   },
 );
 

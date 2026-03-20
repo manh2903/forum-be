@@ -17,9 +17,11 @@ const Report = sequelize.define(
     resolvedById: { type: DataTypes.INTEGER, defaultValue: null },
     resolvedAt: { type: DataTypes.DATE, defaultValue: null },
     resolution: { type: DataTypes.TEXT, defaultValue: null },
+    isDeleted: { type: DataTypes.BOOLEAN, defaultValue: false },
   },
   {
     indexes: [{ unique: true, fields: ["reporterId", "targetType", "targetId"] }, { fields: ["status"] }],
+    defaultScope: { where: { isDeleted: false } },
   },
 );
 

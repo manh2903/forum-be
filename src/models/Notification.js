@@ -28,9 +28,11 @@ const Notification = sequelize.define(
     isRead: { type: DataTypes.BOOLEAN, defaultValue: false },
     isEmailSent: { type: DataTypes.BOOLEAN, defaultValue: false },
     link: { type: DataTypes.STRING(500) },
+    isDeleted: { type: DataTypes.BOOLEAN, defaultValue: false },
   },
   {
     indexes: [{ fields: ["recipientId", "isRead"] }, { fields: ["createdAt"] }],
+    defaultScope: { where: { isDeleted: false } },
   },
 );
 

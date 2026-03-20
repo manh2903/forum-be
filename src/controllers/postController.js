@@ -216,7 +216,7 @@ const deletePost = async (req, res, next) => {
     if (post.authorId !== req.user.id && req.user.role === "user") {
       return res.status(403).json({ message: "Forbidden" });
     }
-    await post.destroy();
+    await post.update({ isDeleted: true });
     // Reputation: -5 khi xóa bài published
     if (post.status === "published") {
       await User.decrement("reputation", { by: 5, where: { id: post.authorId } });

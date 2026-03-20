@@ -14,20 +14,18 @@ const getComments = async (req, res, next) => {
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     const topLevelComments = await Comment.findAndCountAll({
-      where: { postId, parentId: null, isDeleted: false },
+      where: { postId, parentId: null },
       include: [
         { model: User, as: "author", attributes: ["id", "username", "avatar", "reputation", "role"] },
         {
           model: Comment,
           as: "replies",
-          where: { isDeleted: false },
           required: false,
           include: [
             { model: User, as: "author", attributes: ["id", "username", "avatar", "reputation", "role"] },
             {
               model: Comment,
               as: "replies",
-              where: { isDeleted: false },
               required: false,
               include: [{ model: User, as: "author", attributes: ["id", "username", "avatar", "reputation", "role"] }],
             },

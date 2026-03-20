@@ -50,7 +50,7 @@ const deleteCategory = async (req, res, next) => {
   try {
     const category = await Category.findByPk(req.params.id);
     if (!category) return res.status(404).json({ message: "Category not found" });
-    await category.destroy();
+    await category.update({ isDeleted: true });
     res.json({ message: "Category deleted" });
   } catch (err) {
     next(err);
@@ -116,7 +116,7 @@ const deleteTopic = async (req, res, next) => {
   try {
     const topic = await Topic.findByPk(req.params.id);
     if (!topic) return res.status(404).json({ message: "Topic not found" });
-    await topic.destroy();
+    await topic.update({ isDeleted: true });
     res.json({ message: "Topic deleted" });
   } catch (err) {
     next(err);

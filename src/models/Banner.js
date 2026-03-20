@@ -11,9 +11,11 @@ const Banner = sequelize.define(
     order: { type: DataTypes.INTEGER, defaultValue: 0 },
     isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
     position: { type: DataTypes.STRING, defaultValue: "home_top" }, // position can be used for different banner locations
+    isDeleted: { type: DataTypes.BOOLEAN, defaultValue: false },
   },
   {
     timestamps: true,
+    defaultScope: { where: { isDeleted: false } }
   },
 );
 

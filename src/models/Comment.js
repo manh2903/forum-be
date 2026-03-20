@@ -15,6 +15,9 @@ const Comment = sequelize.define(
   },
   {
     indexes: [{ fields: ["postId"] }, { fields: ["authorId"] }, { fields: ["parentId"] }],
+    defaultScope: {
+      where: { isDeleted: false },
+    },
   },
 );
 

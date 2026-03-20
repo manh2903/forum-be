@@ -9,6 +9,9 @@ const Category = sequelize.define("Category", {
   icon: { type: DataTypes.STRING(255) },
   color: { type: DataTypes.STRING(50), defaultValue: "#2563EB" },
   order: { type: DataTypes.INTEGER, defaultValue: 0 },
+  isDeleted: { type: DataTypes.BOOLEAN, defaultValue: false },
+}, {
+  defaultScope: { where: { isDeleted: false } }
 });
 
 const Topic = sequelize.define("Topic", {
@@ -20,6 +23,9 @@ const Topic = sequelize.define("Topic", {
   icon: { type: DataTypes.STRING(255) },
   postCount: { type: DataTypes.INTEGER, defaultValue: 0 },
   followerCount: { type: DataTypes.INTEGER, defaultValue: 0 },
+  isDeleted: { type: DataTypes.BOOLEAN, defaultValue: false },
+}, {
+  defaultScope: { where: { isDeleted: false } }
 });
 
 const Tag = sequelize.define("Tag", {
@@ -29,6 +35,9 @@ const Tag = sequelize.define("Tag", {
   description: { type: DataTypes.TEXT },
   postCount: { type: DataTypes.INTEGER, defaultValue: 0 },
   color: { type: DataTypes.STRING(50), defaultValue: "#64748B" },
+  isDeleted: { type: DataTypes.BOOLEAN, defaultValue: false },
+}, {
+  defaultScope: { where: { isDeleted: false } }
 });
 
 const TopicFollow = sequelize.define(

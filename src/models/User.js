@@ -29,7 +29,7 @@ const User = sequelize.define(
     emailNotifications: { type: DataTypes.BOOLEAN, defaultValue: true },
     lastLogin: { type: DataTypes.DATE, defaultValue: null },
     resetPasswordToken: { type: DataTypes.STRING(255), defaultValue: null },
-    resetPasswordExpires: { type: DataTypes.DATE, defaultValue: null },
+    isDeleted: { type: DataTypes.BOOLEAN, defaultValue: false },
   },
   {
     hooks: {
@@ -41,6 +41,9 @@ const User = sequelize.define(
           user.password = await bcrypt.hash(user.password, 12);
         }
       },
+    },
+    defaultScope: {
+      where: { isDeleted: false },
     },
   },
 );

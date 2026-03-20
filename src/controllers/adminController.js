@@ -177,7 +177,7 @@ const getAnalytics = async (req, res, next) => {
     const [userCount, postCount, commentCount, reportCount] = await Promise.all([
       User.count(),
       Post.count({ where: { status: "published" } }),
-      Comment.count({ where: { isDeleted: false } }),
+      Comment.count(),
       Report.count({ where: { status: "pending" } }),
     ]);
 

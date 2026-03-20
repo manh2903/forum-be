@@ -21,6 +21,7 @@ const Post = sequelize.define(
     bookmarkCount: { type: DataTypes.INTEGER, defaultValue: 0 },
     readTime: { type: DataTypes.INTEGER, defaultValue: 0 },
     publishedAt: { type: DataTypes.DATE },
+    isDeleted: { type: DataTypes.BOOLEAN, defaultValue: false },
   },
   {
     indexes: [
@@ -30,6 +31,9 @@ const Post = sequelize.define(
       { fields: ["createdAt"] },
       { type: "FULLTEXT", fields: ["title", "content", "excerpt"] },
     ],
+    defaultScope: {
+      where: { isDeleted: false },
+    },
   },
 );
 

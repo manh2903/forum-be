@@ -50,7 +50,7 @@ const markRead = async (req, res, next) => {
 // DELETE /api/notifications/:id
 const deleteNotification = async (req, res, next) => {
   try {
-    await Notification.destroy({ where: { id: req.params.id, recipientId: req.user.id } });
+    await Notification.update({ isDeleted: true }, { where: { id: req.params.id, recipientId: req.user.id } });
     res.json({ message: "Notification deleted" });
   } catch (err) {
     next(err);
