@@ -209,32 +209,70 @@ const getAnalytics = async (req, res, next) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const userGrowth = await User.findAll({
-      where: { createdAt: { [Op.gte]: thirtyDaysAgo } },
-      attributes: [
-        [fn("DATE", col("createdAt")), "date"],
-        [fn("COUNT", col("id")), "count"],
-      ],
-      group: [fn("DATE", col("createdAt"))],
-      order: [[fn("DATE", col("createdAt")), "ASC"]],
-      raw: true,
+    const [userGrowth, postGrowth] = await Promise.all([
+      User.findAll({
+        where: { createdAt: { [Op.gte]: thirtyDaysAgo } },
+        attributes: [
+          [fn("DATE", col("createdAt")), "date"],
+          [fn("COUNT", col("id")), "count"],
+        ],
+        group: [fn("DATE", col("createdAt"))],
+        order: [[fn("DATE", col("createdAt")), "ASC"]],
+        raw: true,
+      }),
+      Post.findAll({
+        where: { status: "published", createdAt: { [Op.gte]: thirtyDaysAgo } },
+        attributes: [
+          [fn("DATE", col("createdAt")), "date"],
+          [fn("COUNT", col("id")), "count"],
+        ],
+        group: [fn("DATE", col("createdAt"))],
+        order: [[fn("DATE", col("createdAt")), "ASC"]],
+        raw: true,
+      })
+    ]);
+
+    // Top Tags
+    const topTags = await Tag.findAll({
+      attributes: ["id", "name", [fn("COUNT", col("posts.id")), "postCount"]],
+      include: [{ model: Post, as: "posts", attributes: [], through: { attributes: [] } }],
+      group: ["Tag.id"],
+      order: [[fn("COUNT", col("posts.id")), "DESC"]],
+      limit: 10,
+      subQuery: false
     });
 
-    const postGrowth = await Post.findAll({
-      where: { status: "published", createdAt: { [Op.gte]: thirtyDaysAgo } },
-      attributes: [
-        [fn("DATE", col("createdAt")), "date"],
-        [fn("COUNT", col("id")), "count"],
-      ],
-      group: [fn("DATE", col("createdAt"))],
-      order: [[fn("DATE", col("createdAt")), "ASC"]],
-      raw: true,
+    // Role Distribution
+    const roleDistribution = await User.findAll({
+      attributes: ["role", [fn("COUNT", col("id")), "count"]],
+      group: ["role"],
+      raw: true
+    });
+
+    // Report Summary
+    const [resolvedReports, totalReports] = await Promise.all([
+      Report.count({ where: { status: { [Op.ne]: "pending" } } }),
+      Report.count()
+    ]);
+
+    // Latest Audit Logs (Last 5)
+    const latestAuditLogs = await AuditLog.findAll({
+      limit: 5,
+      order: [["createdAt", "DESC"]],
+      include: [{ model: User, as: "user", attributes: ["username", "avatar"] }]
     });
 
     res.json({
-      overview: { userCount, postCount, commentCount, pendingReports: reportCount, newUsersWeek: newUsers, newPostsWeek: newPosts },
+      overview: { 
+        userCount, postCount, commentCount, 
+        pendingReports: reportCount, totalReports, resolvedReports,
+        newUsersWeek: newUsers, newPostsWeek: newPosts 
+      },
       topPosts,
       topUsers,
+      topTags,
+      roleDistribution,
+      latestAuditLogs,
       charts: { userGrowth, postGrowth },
     });
   } catch (err) {
