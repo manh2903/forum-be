@@ -449,6 +449,27 @@ const rejectPost = async (req, res, next) => {
   }
 };
 
+const restorePost = async (req, res, next) => {
+  try {
+    const post = await Post.unscoped().findByPk(req.params.id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    await post.update({ isDeleted: false });
+
+    await AuditLog.create({
+      userId: req.user.id,
+      action: "restore_post",
+      targetType: "post",
+      targetId: post.id,
+      ipAddress: req.ip,
+    });
+
+    res.json({ message: "Đã khôi phục bài viết thành công", post });
+  } catch (err) {
+    next(err);
+  }
+};
+
 const updateUser = async (req, res, next) => {
   try {
     const { fullName, username, email, studentId, class: className, reputation, role } = req.body;
@@ -495,5 +516,6 @@ module.exports = {
   togglePostStatus,
   getAuditAnalytics,
   approvePost,
-  rejectPost
+  rejectPost,
+  restorePost
 };
