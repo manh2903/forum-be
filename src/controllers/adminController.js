@@ -1,5 +1,6 @@
 const { fn, col, literal, Op } = require("sequelize");
 const { User, Post, Comment, Report, AuditLog, Tag } = require("../models");
+const { updateFeaturedPosts } = require("../utils/featuredJob");
 
 // GET /api/admin/users
 const getUsers = async (req, res, next) => {
@@ -201,4 +202,23 @@ const getAuditLogs = async (req, res, next) => {
   }
 };
 
-module.exports = { getUsers, banUser, unbanUser, changeRole, togglePinPost, toggleFeaturePost, getAnalytics, getAuditLogs };
+const updateFeaturedPostsTrigger = async (req, res) => {
+  try {
+    await updateFeaturedPosts();
+    res.json({ message: "Đã cập nhật danh sách bài viết nổi bật dựa trên thuật toán mới nhất" });
+  } catch (error) {
+    res.status(500).json({ message: "Lỗi khi cập nhật bài nổi bật" });
+  }
+};
+
+module.exports = { 
+  getUsers, 
+  banUser, 
+  unbanUser, 
+  changeRole, 
+  togglePinPost, 
+  toggleFeaturePost, 
+  getAnalytics, 
+  getAuditLogs,
+  updateFeaturedPostsTrigger
+};
