@@ -156,6 +156,11 @@ const createPost = async (req, res, next) => {
     // Update topic post count
     if (topicId) await Topic.increment("postCount", { where: { id: topicId } });
 
+    // Reputation: +5 khi đăng bài published
+    if (status === "published") {
+      await User.increment("reputation", { by: 5, where: { id: req.user.id } });
+    }
+
     const fullPost = await Post.findByPk(post.id, {
       include: [
         { model: User, as: "author", attributes: ["id", "username", "avatar"] },
@@ -180,7 +185,11 @@ const updatePost = async (req, res, next) => {
 
     const { title, content, excerpt, topicId, tags, status, coverImage } = req.body;
     const updateData = { title, content, excerpt, topicId: topicId || null, status, coverImage };
-    if (status === "published" && !post.publishedAt) updateData.publishedAt = new Date();
+    if (status === "published" && !post.publishedAt) {
+      updateData.publishedAt = new Date();
+      // Reputation: +5 khi chuyển sang published lần đầu
+      await User.increment("reputation", { by: 5, where: { id: post.authorId } });
+    }
     if (content) updateData.readTime = Math.ceil(content.split(" ").length / 200);
 
     await post.update(updateData);
@@ -208,6 +217,10 @@ const deletePost = async (req, res, next) => {
       return res.status(403).json({ message: "Forbidden" });
     }
     await post.destroy();
+    // Reputation: -5 khi xóa bài published
+    if (post.status === "published") {
+      await User.decrement("reputation", { by: 5, where: { id: post.authorId } });
+    }
     res.json({ message: "Post deleted" });
   } catch (err) {
     next(err);
@@ -223,7 +236,8 @@ const likePost = async (req, res, next) => {
     const [, created] = await PostLike.findOrCreate({ where: { userId: req.user.id, postId: post.id } });
     if (created) {
       await post.increment("likeCount");
-      await User.increment("reputation", { by: 1, where: { id: post.authorId } });
+      // Reputation: +2 khi bài được like
+      await User.increment("reputation", { by: 2, where: { id: post.authorId } });
       if (post.authorId !== req.user.id) {
         const notif = await Notification.create({
           recipientId: post.authorId,
@@ -238,9 +252,10 @@ const likePost = async (req, res, next) => {
       }
       return res.json({ liked: true, likeCount: post.likeCount + 1 });
     }
-    // Unlike
+    // Unlike: -2 điểm (hoàn trả)
     await PostLike.destroy({ where: { userId: req.user.id, postId: post.id } });
     await post.decrement("likeCount");
+    await User.decrement("reputation", { by: 2, where: { id: post.authorId } });
     res.json({ liked: false, likeCount: Math.max(0, post.likeCount - 1) });
   } catch (err) {
     next(err);
@@ -256,10 +271,14 @@ const bookmarkPost = async (req, res, next) => {
     const [, created] = await Bookmark.findOrCreate({ where: { userId: req.user.id, postId: post.id } });
     if (created) {
       await post.increment("bookmarkCount");
+      // Reputation: +1 khi bài được bookmark
+      await User.increment("reputation", { by: 1, where: { id: post.authorId } });
       return res.json({ bookmarked: true });
     }
+    // Un-bookmark: -1 điểm (hoàn trả)
     await Bookmark.destroy({ where: { userId: req.user.id, postId: post.id } });
     await post.decrement("bookmarkCount");
+    await User.decrement("reputation", { by: 1, where: { id: post.authorId } });
     res.json({ bookmarked: false });
   } catch (err) {
     next(err);

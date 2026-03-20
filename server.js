@@ -12,6 +12,7 @@ const { initSocket } = require("./src/socket");
 const routes = require("./src/routes");
 const { errorHandler } = require("./src/middlewares/errorHandler");
 const logger = require("./src/utils/logger");
+const { startFeaturedJob } = require("./src/utils/featuredJob");
 
 require("./src/config/passport");
 
@@ -51,8 +52,11 @@ async function startServer() {
   try {
     await sequelize.authenticate();
     logger.info("Database connected");
-    await sequelize.sync({ alter: true });
+    await sequelize.sync(); // Chỉ tạo bảng mới nếu chưa có, không ALTER bảng cũ
     logger.info("Database synced");
+
+    // Khởi động cron job cập nhật bài viết nổi bật
+    startFeaturedJob();
 
     server.listen(PORT, () => {
       logger.info(`Server running on port ${PORT}`);

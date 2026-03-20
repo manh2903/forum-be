@@ -96,6 +96,11 @@ const createComment = async (req, res, next) => {
     const comment = await Comment.create({ content, postId, parentId, depth, authorId: req.user.id });
     await post.increment("commentCount");
 
+    // Reputation: +2 cho tác giả bài viết khi nhận comment (không được tự comment bài mình)
+    if (post.authorId !== req.user.id) {
+      await User.increment("reputation", { by: 2, where: { id: post.authorId } });
+    }
+
     // Notifications
     const notifications = [];
     if (post.authorId !== req.user.id) {
@@ -182,6 +187,11 @@ const deleteComment = async (req, res, next) => {
     if (comment.authorId !== req.user.id && req.user.role === "user") return res.status(403).json({ message: "Forbidden" });
     await comment.update({ isDeleted: true, content: "[Comment deleted]" });
     await Post.decrement("commentCount", { where: { id: comment.postId } });
+    // Reputation: -2 khi comment bị xóa (hoàn trả)
+    const post = await Post.findByPk(comment.postId);
+    if (post && post.authorId !== comment.authorId) {
+      await User.decrement("reputation", { by: 2, where: { id: post.authorId } });
+    }
     res.json({ message: "Comment deleted" });
   } catch (err) {
     next(err);
@@ -197,6 +207,8 @@ const likeComment = async (req, res, next) => {
     const [, created] = await CommentLike.findOrCreate({ where: { userId: req.user.id, commentId: comment.id } });
     if (created) {
       await comment.increment("likeCount");
+      // Reputation: +1 khi comment được like
+      await User.increment("reputation", { by: 1, where: { id: comment.authorId } });
       if (comment.authorId !== req.user.id) {
         const notif = await Notification.create({
           recipientId: comment.authorId,
@@ -210,8 +222,10 @@ const likeComment = async (req, res, next) => {
       }
       return res.json({ liked: true, likeCount: comment.likeCount + 1 });
     }
+    // Unlike comment: -1 điểm (hoàn trả)
     await CommentLike.destroy({ where: { userId: req.user.id, commentId: comment.id } });
     await comment.decrement("likeCount");
+    await User.decrement("reputation", { by: 1, where: { id: comment.authorId } });
     res.json({ liked: false, likeCount: Math.max(0, comment.likeCount - 1) });
   } catch (err) {
     next(err);
