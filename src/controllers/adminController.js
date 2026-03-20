@@ -13,7 +13,7 @@ const getUsers = async (req, res, next) => {
     if (status === "banned") where.isBanned = true;
     if (status === "active") where.isBanned = false;
 
-    const { count, rows } = await User.findAndCountAll({
+    const { count, rows } = await User.unscoped().findAndCountAll({
       where,
       attributes: { exclude: ["password", "resetPasswordToken", "resetPasswordExpires", "googleId", "githubId"] },
       limit: parseInt(limit),
@@ -115,9 +115,15 @@ const getPostsAdmin = async (req, res, next) => {
     const where = {};
     if (search) where.title = { [Op.like]: `%${search}%` };
     if (topicId) where.topicId = topicId;
-    if (status) where.status = status;
+    
+    if (status === "deleted") {
+      where.isDeleted = true;
+    } else {
+      where.isDeleted = false; // Mặc định ẩn đã xóa trừ khi chọn filter Deleted
+      if (status) where.status = status;
+    }
 
-    const { count, rows } = await Post.findAndCountAll({
+    const { count, rows } = await Post.unscoped().findAndCountAll({
       where,
       distinct: true,
       include: [
@@ -128,9 +134,12 @@ const getPostsAdmin = async (req, res, next) => {
       offset,
       order: [["createdAt", "DESC"]],
     });
-    const counts = await Post.findAll({
-      attributes: ["status", [fn("COUNT", col("id")), "count"]],
-      group: ["status"],
+    const counts = await Post.unscoped().findAll({
+      attributes: [
+        [literal("CASE WHEN isDeleted = 1 THEN 'deleted' ELSE status END"), "status_label"],
+        [fn("COUNT", col("id")), "count"]
+      ],
+      group: ["status_label"],
       raw: true,
     });
 
@@ -140,9 +149,11 @@ const getPostsAdmin = async (req, res, next) => {
       page: parseInt(page), 
       totalPages: Math.ceil(count / parseInt(limit)),
       counts: counts.reduce((acc, curr) => {
-        acc[curr.status] = curr.count;
+        const c = Number(curr.count);
+        acc[curr.status_label] = c;
+        acc.total = (acc.total || 0) + c;
         return acc;
-      }, {})
+      }, { total: 0 })
     });
   } catch (err) {
     next(err);
