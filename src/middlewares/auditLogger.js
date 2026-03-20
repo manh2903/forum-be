@@ -33,14 +33,14 @@ const sanitizeData = (data) => {
 };
 
 const auditLogger = async (req, res, next) => {
-  // Bỏ qua GET requests trừ phi admin/auth quan trọng?
-  // Để đơn giản và giống mẫu, ta log các method thay đổi dữ liệu
-  if (req.method === "GET") {
+  // Bỏ qua GET requests từ các route admin để tránh đầy DB vì fetch dữ liệu liên tục
+  // (Các phương thức POST, PUT, DELETE thay đổi dữ liệu vẫn được log bình thường)
+  if (req.method === "GET" && req.originalUrl.includes("/api/admin")) {
     return next();
   }
 
   // Danh sách endpoint bỏ qua (nếu có)
-  const skipEndpoints = ["/api/notifications/unread-count"];
+  const skipEndpoints = ["/api/notifications/unread-count", "/api/admin/audit-logs"];
   if (skipEndpoints.some(ep => req.originalUrl.includes(ep))) {
     return next();
   }
