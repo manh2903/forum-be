@@ -13,6 +13,7 @@ const search = async (req, res, next) => {
 
     if (type === "all" || type === "posts") {
       const { count, rows } = await Post.findAndCountAll({
+        distinct: true,
         where: {
           status: "published",
           [Op.or]: [{ title: { [Op.like]: `%${query}%` } }, { excerpt: { [Op.like]: `%${query}%` } }],
