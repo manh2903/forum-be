@@ -12,6 +12,7 @@ const reportRoutes = require("./reports");
 const adminRoutes = require("./admin");
 const uploadRoutes = require("./upload");
 const bannerRoutes = require("./banners");
+const settingRoutes = require("./setting");
 
 router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
@@ -24,5 +25,6 @@ router.use("/reports", reportRoutes);
 router.use("/admin", adminRoutes);
 router.use("/upload", uploadRoutes);
 router.use("/banners", bannerRoutes);
+router.use("/settings", settingRoutes);
 
 module.exports = router;

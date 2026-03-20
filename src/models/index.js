@@ -8,6 +8,7 @@ const Notification = require("./Notification");
 const Report = require("./Report");
 const { AuditLog, SearchHistory } = require("./AuditLog");
 const Banner = require("./Banner");
+const Setting = require("./Setting");
 
 // =====================
 // User Associations
@@ -105,4 +106,5 @@ module.exports = {
   AuditLog,
   SearchHistory,
   Banner,
+  Setting,
 };
