@@ -16,6 +16,8 @@ const {
   getPostsAdmin,
   updatePostAdmin,
   togglePostStatus,
+  approvePost,
+  rejectPost,
 } = require("../controllers/adminController");
 const { getReports, resolveReport } = require("../controllers/reportController");
 
@@ -32,6 +34,8 @@ router.put("/posts/:id", ...isAdmin, updatePostAdmin);
 router.put("/posts/:id/status", ...isAdmin, togglePostStatus);
 router.put("/posts/:id/pin", ...isAdmin, togglePinPost);
 router.put("/posts/:id/feature", ...isAdmin, toggleFeaturePost);
+router.put("/posts/:id/approve", ...isAdmin, approvePost);
+router.put("/posts/:id/reject", ...isAdmin, rejectPost);
 router.post("/posts/update-featured", ...isAdmin, updateFeaturedPostsTrigger);
 router.get("/reports", ...isAdmin, getReports);
 router.put("/reports/:id", ...isAdmin, resolveReport);

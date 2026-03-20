@@ -128,7 +128,22 @@ const getPostsAdmin = async (req, res, next) => {
       offset,
       order: [["createdAt", "DESC"]],
     });
-    res.json({ posts: rows, total: count, page: parseInt(page), totalPages: Math.ceil(count / parseInt(limit)) });
+    const counts = await Post.findAll({
+      attributes: ["status", [fn("COUNT", col("id")), "count"]],
+      group: ["status"],
+      raw: true,
+    });
+
+    res.json({ 
+      posts: rows, 
+      total: count, 
+      page: parseInt(page), 
+      totalPages: Math.ceil(count / parseInt(limit)),
+      counts: counts.reduce((acc, curr) => {
+        acc[curr.status] = curr.count;
+        return acc;
+      }, {})
+    });
   } catch (err) {
     next(err);
   }
@@ -352,6 +367,77 @@ const updateFeaturedPostsTrigger = async (req, res) => {
   }
 };
 
+const approvePost = async (req, res, next) => {
+  try {
+    const post = await Post.findByPk(req.params.id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    const isFirstPublished = !post.publishedAt;
+    await post.update({ status: "published", publishedAt: post.publishedAt || new Date() });
+
+    if (isFirstPublished) {
+      await User.increment("reputation", { by: 5, where: { id: post.authorId } });
+    }
+
+    const { Notification } = require("../models");
+    const { sendNotification } = require("../socket");
+    const notif = await Notification.create({
+      recipientId: post.authorId,
+      senderId: req.user.id,
+      type: "system",
+      content: `Bài viết "${post.title}" của bạn đã được phê duyệt!`,
+      link: `/posts/${post.slug}`,
+    });
+    sendNotification(post.authorId, notif);
+
+    await AuditLog.create({
+      userId: req.user.id,
+      action: "approve_post",
+      targetType: "post",
+      targetId: post.id,
+      ipAddress: req.ip,
+    });
+
+    res.json({ message: "Bài viết đã được phê duyệt", post });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const rejectPost = async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+    const post = await Post.findByPk(req.params.id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    await post.update({ status: "rejected" });
+
+    const { Notification } = require("../models");
+    const { sendNotification } = require("../socket");
+    const notif = await Notification.create({
+      recipientId: post.authorId,
+      senderId: req.user.id,
+      type: "system",
+      content: `Bài viết "${post.title}" của bạn bị từ chối phê duyệt${reason ? `: ${reason}` : ""}.`,
+      link: `/posts/edit/${post.id}`,
+    });
+    sendNotification(post.authorId, notif);
+
+    await AuditLog.create({
+      userId: req.user.id,
+      action: "reject_post",
+      targetType: "post",
+      targetId: post.id,
+      details: { reason },
+      ipAddress: req.ip,
+    });
+
+    res.json({ message: "Bài viết đã bị từ chối", post });
+  } catch (err) {
+    next(err);
+  }
+};
+
 const updateUser = async (req, res, next) => {
   try {
     const { fullName, username, email, studentId, class: className, reputation, role } = req.body;
@@ -396,5 +482,7 @@ module.exports = {
   getPostsAdmin,
   updatePostAdmin,
   togglePostStatus,
-  getAuditAnalytics
+  getAuditAnalytics,
+  approvePost,
+  rejectPost
 };

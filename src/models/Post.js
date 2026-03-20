@@ -12,7 +12,7 @@ const Post = sequelize.define(
     content: { type: DataTypes.TEXT("long"), allowNull: false },
     excerpt: { type: DataTypes.TEXT },
     coverImage: { type: DataTypes.STRING(500) },
-    status: { type: DataTypes.ENUM("draft", "published", "archived"), defaultValue: "draft" },
+    status: { type: DataTypes.ENUM("draft", "pending", "published", "rejected", "archived"), defaultValue: "draft" },
     isPinned: { type: DataTypes.BOOLEAN, defaultValue: false },
     isFeatured: { type: DataTypes.BOOLEAN, defaultValue: false },
     likeCount: { type: DataTypes.INTEGER, defaultValue: 0 },

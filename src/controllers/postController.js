@@ -130,6 +130,11 @@ const createPost = async (req, res, next) => {
     const slug = await generateUniqueSlug(title);
     const readTime = Math.ceil(content.split(" ").length / 200);
 
+    let finalStatus = status;
+    if (finalStatus === "published" && req.user.role === "user") {
+      finalStatus = "pending";
+    }
+
     const post = await Post.create({
       title,
       content,
@@ -141,11 +146,11 @@ const createPost = async (req, res, next) => {
           .substring(0, 200),
       slug,
       topicId: topicId || null,
-      status,
+      status: finalStatus,
       coverImage,
       readTime,
       authorId: req.user.id,
-      publishedAt: status === "published" ? new Date() : null,
+      publishedAt: finalStatus === "published" ? new Date() : null,
     });
 
     // Handle tags
@@ -184,8 +189,14 @@ const updatePost = async (req, res, next) => {
     }
 
     const { title, content, excerpt, topicId, tags, status, coverImage } = req.body;
-    const updateData = { title, content, excerpt, topicId: topicId || null, status, coverImage };
-    if (status === "published" && !post.publishedAt) {
+    
+    let finalStatus = status;
+    if (finalStatus === "published" && req.user.role === "user") {
+      finalStatus = "pending";
+    }
+
+    const updateData = { title, content, excerpt, topicId: topicId || null, status: finalStatus, coverImage };
+    if (finalStatus === "published" && !post.publishedAt) {
       updateData.publishedAt = new Date();
       // Reputation: +5 khi chuyển sang published lần đầu
       await User.increment("reputation", { by: 5, where: { id: post.authorId } });
