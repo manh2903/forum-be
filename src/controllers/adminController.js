@@ -263,6 +263,48 @@ const getAuditLogs = async (req, res, next) => {
   }
 };
 
+// GET /api/admin/audit-analytics
+const getAuditAnalytics = async (req, res, next) => {
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const [totalLogs, errorLogs, activeAdmins, dailyTrend] = await Promise.all([
+      AuditLog.count(),
+      AuditLog.count({ where: { status: { [Op.gte]: 400 } } }),
+      AuditLog.findAll({
+        attributes: [
+          [col("userId"), "userId"],
+          [fn("COUNT", col("id")), "count"],
+        ],
+        include: [{ model: User, as: "user", attributes: ["username", "avatar"] }],
+        group: ["userId", "user.id"],
+        order: [[fn("COUNT", col("id")), "DESC"]],
+        limit: 5,
+      }),
+      AuditLog.findAll({
+        where: { createdAt: { [Op.gte]: thirtyDaysAgo } },
+        attributes: [
+          [fn("DATE", col("createdAt")), "date"],
+          [fn("COUNT", col("id")), "count"],
+          [fn("SUM", literal("CASE WHEN status >= 400 THEN 1 ELSE 0 END")), "errors"]
+        ],
+        group: [fn("DATE", col("createdAt"))],
+        order: [[fn("DATE", col("createdAt")), "ASC"]],
+        raw: true
+      })
+    ]);
+
+    res.json({
+      summary: { totalLogs, errorLogs, errorRate: totalLogs ? (errorLogs / totalLogs * 100).toFixed(1) : 0 },
+      activeAdmins,
+      dailyTrend
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 const updateFeaturedPostsTrigger = async (req, res) => {
   try {
     await updateFeaturedPosts();
@@ -315,5 +357,6 @@ module.exports = {
   updateFeaturedPostsTrigger,
   getPostsAdmin,
   updatePostAdmin,
-  togglePostStatus
+  togglePostStatus,
+  getAuditAnalytics
 };

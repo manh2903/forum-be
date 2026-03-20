@@ -11,6 +11,7 @@ const {
   toggleFeaturePost,
   getAnalytics,
   getAuditLogs,
+  getAuditAnalytics,
   updateFeaturedPostsTrigger,
   getPostsAdmin,
   updatePostAdmin,
@@ -36,5 +37,6 @@ router.get("/reports", ...isAdmin, getReports);
 router.put("/reports/:id", ...isAdmin, resolveReport);
 router.get("/analytics", ...isAdmin, getAnalytics);
 router.get("/audit-logs", ...isAdminOnly, getAuditLogs);
+router.get("/audit-analytics", ...isAdminOnly, getAuditAnalytics);
 
 module.exports = router;
