@@ -54,7 +54,7 @@ async function startServer() {
   try {
     await sequelize.authenticate();
     logger.info("Database connected");
-    await sequelize.sync(); // Chỉ tạo bảng mới (như AuditLogs vừa drop), không ALTER bảng cũ (như Users)
+    await sequelize.sync();
     logger.info("Database synced");
 
     // Khởi động cron job cập nhật bài viết nổi bật

@@ -7,7 +7,10 @@ const User = sequelize.define(
   {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
     username: { type: DataTypes.STRING(50), allowNull: false, unique: true },
+    fullName: { type: DataTypes.STRING(255), allowNull: true },
     email: { type: DataTypes.STRING(255), allowNull: false, unique: true },
+    studentId: { type: DataTypes.STRING(20), allowNull: true, unique: true },
+    class: { type: DataTypes.STRING(50), allowNull: true },
     password: { type: DataTypes.STRING(255), allowNull: true },
     avatar: { type: DataTypes.STRING(500), defaultValue: null },
     bio: { type: DataTypes.TEXT, defaultValue: null },
@@ -48,7 +51,7 @@ User.prototype.comparePassword = async function (password) {
 
 User.prototype.toPublicJSON = function () {
   const { password, resetPasswordToken, resetPasswordExpires, googleId, githubId, ...rest } = this.toJSON();
-  return rest;
+  return { ...rest, hasPassword: !!password };
 };
 
 module.exports = User;

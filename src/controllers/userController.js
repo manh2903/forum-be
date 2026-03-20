@@ -29,8 +29,14 @@ const getProfile = async (req, res, next) => {
 // PUT /api/users/me
 const updateProfile = async (req, res, next) => {
   try {
-    const { bio, website, location, jobTitle, githubUrl, twitterUrl, emailNotifications } = req.body;
-    const updateData = { bio, website, location, jobTitle, githubUrl, twitterUrl, emailNotifications };
+    const { fullName, bio, website, location, jobTitle, githubUrl, twitterUrl, emailNotifications, studentId, class: className } = req.body;
+
+    if (studentId && studentId !== req.user.studentId) {
+      const existing = await User.findOne({ where: { studentId } });
+      if (existing) return res.status(400).json({ message: "Mã sinh viên này đã được sử dụng bởi người dùng khác" });
+    }
+
+    const updateData = { fullName, bio, website, location, jobTitle, githubUrl, twitterUrl, emailNotifications, studentId, class: className };
     if (req.file) updateData.avatar = `/uploads/${req.file.filename}`;
 
     await req.user.update(updateData);

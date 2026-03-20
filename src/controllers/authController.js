@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const { Op } = require("sequelize");
 const passport = require("passport");
 const { User } = require("../models");
 const { generateTokens } = require("../middlewares/auth");
@@ -6,16 +7,21 @@ const { generateTokens } = require("../middlewares/auth");
 // POST /api/auth/register
 const register = async (req, res, next) => {
   try {
-    const { username, email, password } = req.body;
+    const { username, fullName, email, password, studentId, class: className } = req.body;
     const existing = await User.findOne({ where: { email } });
-    if (existing) return res.status(409).json({ message: "Email already in use" });
+    if (existing) return res.status(409).json({ message: "Email đã tồn tại" });
     const existingUsername = await User.findOne({ where: { username } });
-    if (existingUsername) return res.status(409).json({ message: "Username already taken" });
+    if (existingUsername) return res.status(409).json({ message: "Username đã tồn tại" });
+
+    if (studentId) {
+      const existingStudentId = await User.findOne({ where: { studentId } });
+      if (existingStudentId) return res.status(409).json({ message: "Mã sinh viên này đã được sử dụng" });
+    }
 
     const userCount = await User.count();
     const role = userCount === 0 ? "admin" : "user";
 
-    const user = await User.create({ username, email, password, isVerified: true, role });
+    const user = await User.create({ username, fullName, email, password, studentId, class: className, isVerified: true, role });
     const { accessToken, refreshToken } = generateTokens(user);
     res.status(201).json({
       message: "Registration successful",
@@ -28,12 +34,15 @@ const register = async (req, res, next) => {
   }
 };
 
-// POST /api/auth/login
 const login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ where: { email } });
-    if (!user || !user.password) return res.status(401).json({ message: "Invalid credentials" });
+    const { account, password } = req.body;
+    const user = await User.findOne({
+      where: {
+        [Op.or]: [{ email: account }, { username: account }],
+      },
+    });
+    if (!user || !user.password) return res.status(401).json({ message: "Thông tin đăng nhập không chính xác" });
     if (user.isBanned) return res.status(403).json({ message: "Account banned", reason: user.banReason });
 
     const valid = await user.comparePassword(password);
