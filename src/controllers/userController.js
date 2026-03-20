@@ -111,7 +111,22 @@ const listUsers = async (req, res, next) => {
       offset: parseInt(offset),
       order: [["reputation", "DESC"]],
     });
-    res.json({ users: rows, total: count, page: parseInt(page), totalPages: Math.ceil(count / limit) });
+
+    let follows = new Set();
+    if (req.user && rows.length > 0) {
+      const followData = await Follow.findAll({
+        where: { followerId: req.user.id, followingId: rows.map((u) => u.id) },
+        attributes: ["followingId"],
+      });
+      follows = new Set(followData.map((f) => f.followingId));
+    }
+
+    const users = rows.map((u) => ({
+      ...u.toJSON(),
+      isFollowing: follows.has(u.id),
+    }));
+
+    res.json({ users, total: count, page: parseInt(page), totalPages: Math.ceil(count / limit) });
   } catch (err) {
     next(err);
   }
