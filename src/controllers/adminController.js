@@ -107,6 +107,67 @@ const toggleFeaturePost = async (req, res, next) => {
     next(err);
   }
 };
+// GET /api/admin/posts
+const getPostsAdmin = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20, search, topicId, status } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const where = {};
+    if (search) where.title = { [Op.like]: `%${search}%` };
+    if (topicId) where.topicId = topicId;
+    if (status) where.status = status;
+
+    const { count, rows } = await Post.findAndCountAll({
+      where,
+      distinct: true,
+      include: [
+        { model: User, as: "author", attributes: ["id", "username", "avatar"] },
+        { model: Tag, as: "tags", through: { attributes: [] } },
+      ],
+      limit: parseInt(limit),
+      offset,
+      order: [["createdAt", "DESC"]],
+    });
+    res.json({ posts: rows, total: count, page: parseInt(page), totalPages: Math.ceil(count / parseInt(limit)) });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PUT /api/admin/posts/:id
+const updatePostAdmin = async (req, res, next) => {
+  try {
+    const { title, content, topicId, status, isPinned, isFeatured } = req.body;
+    const post = await Post.findByPk(req.params.id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    await post.update({ title, content, topicId, status, isPinned, isFeatured });
+    await AuditLog.create({
+      userId: req.user.id,
+      action: "update_post_admin",
+      targetType: "post",
+      targetId: post.id,
+      details: { updatedFields: req.body },
+      ipAddress: req.ip,
+    });
+    res.json({ message: "Đã cập nhật bài viết", post });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PUT /api/admin/posts/:id/status
+const togglePostStatus = async (req, res, next) => {
+  try {
+    const post = await Post.findByPk(req.params.id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+    const newStatus = post.status === "published" ? "archived" : "published";
+    await post.update({ status: newStatus });
+    res.json({ message: `Đã ${newStatus === "published" ? "hiện" : "ẩn"} bài viết`, status: newStatus });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // GET /api/admin/analytics
 const getAnalytics = async (req, res, next) => {
@@ -251,5 +312,8 @@ module.exports = {
   toggleFeaturePost, 
   getAnalytics, 
   getAuditLogs,
-  updateFeaturedPostsTrigger
+  updateFeaturedPostsTrigger,
+  getPostsAdmin,
+  updatePostAdmin,
+  togglePostStatus
 };

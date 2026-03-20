@@ -12,6 +12,9 @@ const {
   getAnalytics,
   getAuditLogs,
   updateFeaturedPostsTrigger,
+  getPostsAdmin,
+  updatePostAdmin,
+  togglePostStatus,
 } = require("../controllers/adminController");
 const { getReports, resolveReport } = require("../controllers/reportController");
 
@@ -23,6 +26,9 @@ router.put("/users/:id/ban", ...isAdmin, banUser);
 router.put("/users/:id/unban", ...isAdmin, unbanUser);
 router.put("/users/:id/role", ...isAdminOnly, changeRole);
 router.put("/users/:id", ...isAdminOnly, updateUser);
+router.get("/posts", ...isAdmin, getPostsAdmin);
+router.put("/posts/:id", ...isAdmin, updatePostAdmin);
+router.put("/posts/:id/status", ...isAdmin, togglePostStatus);
 router.put("/posts/:id/pin", ...isAdmin, togglePinPost);
 router.put("/posts/:id/feature", ...isAdmin, toggleFeaturePost);
 router.post("/posts/update-featured", ...isAdmin, updateFeaturedPostsTrigger);
