@@ -6,6 +6,7 @@ const {
   banUser,
   unbanUser,
   changeRole,
+  updateUser,
   togglePinPost,
   toggleFeaturePost,
   getAnalytics,
@@ -21,6 +22,7 @@ router.get("/users", ...isAdmin, getUsers);
 router.put("/users/:id/ban", ...isAdmin, banUser);
 router.put("/users/:id/unban", ...isAdmin, unbanUser);
 router.put("/users/:id/role", ...isAdminOnly, changeRole);
+router.put("/users/:id", ...isAdminOnly, updateUser);
 router.put("/posts/:id/pin", ...isAdmin, togglePinPost);
 router.put("/posts/:id/feature", ...isAdmin, toggleFeaturePost);
 router.post("/posts/update-featured", ...isAdmin, updateFeaturedPostsTrigger);

@@ -211,11 +211,42 @@ const updateFeaturedPostsTrigger = async (req, res) => {
   }
 };
 
+const updateUser = async (req, res, next) => {
+  try {
+    const { fullName, username, email, studentId, class: className, reputation, role } = req.body;
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (username && username !== user.username) {
+      const existing = await User.findOne({ where: { username } });
+      if (existing) return res.status(400).json({ message: "Username đã tồn tại" });
+    }
+    if (email && email !== user.email) {
+      const existing = await User.findOne({ where: { email } });
+      if (existing) return res.status(400).json({ message: "Email đã tồn tại" });
+    }
+
+    await user.update({ fullName, username, email, studentId, class: className, reputation, role });
+    await AuditLog.create({
+      userId: req.user.id,
+      action: "update_user_info",
+      targetType: "user",
+      targetId: user.id,
+      details: { updatedFields: req.body },
+      ipAddress: req.ip,
+    });
+    res.json({ message: "Đã cập nhật thông tin người dùng", user });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = { 
   getUsers, 
   banUser, 
   unbanUser, 
   changeRole, 
+  updateUser,
   togglePinPost, 
   toggleFeaturePost, 
   getAnalytics, 
