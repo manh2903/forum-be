@@ -6,7 +6,7 @@ const { sendNotification } = require("../socket");
 // GET /api/posts
 const listPosts = async (req, res, next) => {
   try {
-    const { page = 1, limit = 10, topic, tag, search, sort = "latest", status = "published" } = req.query;
+    const { page = 1, limit = 10, topic, tag, search, sort = "latest", status = "published", bookmarked } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const where = { status };
 
@@ -18,10 +18,23 @@ const listPosts = async (req, res, next) => {
     const include = [
       { model: User, as: "author", attributes: ["id", "username", "avatar", "reputation", "role"] },
       { model: Topic, as: "topic", attributes: ["id", "name", "slug"] },
-      { model: Tag, as: "tags", attributes: ["id", "name", "slug", "color"], through: { attributes: [] } },
+      {
+        model: Tag,
+        as: "tags",
+        attributes: ["id", "name", "slug", "color"],
+        through: { attributes: [] },
+        ...(tag ? { where: { slug: tag }, required: true } : { required: false }),
+      },
     ];
-    if (tag) {
-      include[2] = { model: Tag, as: "tags", attributes: ["id", "name", "slug", "color"], through: { attributes: [] }, where: { slug: tag } };
+
+    if (bookmarked === "true" && req.user) {
+      include.push({
+        model: Bookmark,
+        as: "bookmarks",
+        where: { userId: req.user.id },
+        attributes: [],
+        required: true,
+      });
     }
 
     const orderMap = {

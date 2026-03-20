@@ -43,6 +43,10 @@ Post.belongsToMany(User, { through: PostLike, as: "likedBy", foreignKey: "postId
 // Bookmarks
 User.belongsToMany(Post, { through: Bookmark, as: "bookmarkedPosts", foreignKey: "userId" });
 Post.belongsToMany(User, { through: Bookmark, as: "bookmarkedBy", foreignKey: "postId" });
+User.hasMany(Bookmark, { foreignKey: "userId", as: "bookmarks" });
+Post.hasMany(Bookmark, { foreignKey: "postId", as: "bookmarks" });
+Bookmark.belongsTo(User, { foreignKey: "userId" });
+Bookmark.belongsTo(Post, { foreignKey: "postId" });
 
 // Comments
 Post.hasMany(Comment, { foreignKey: "postId", as: "comments" });
