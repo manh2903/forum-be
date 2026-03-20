@@ -7,7 +7,8 @@ const { authenticate } = require("../middlewares/auth");
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const fs = require("fs");
-    const dir = "uploads/";
+    const type = req.query.type || "others";
+    const dir = `uploads/${type}/`;
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
@@ -28,7 +29,8 @@ const upload = multer({
 
 router.post("/image", authenticate, upload.single("image"), (req, res) => {
   if (!req.file) return res.status(400).json({ message: "No file uploaded" });
-  res.json({ url: `/uploads/${req.file.filename}`, filename: req.file.filename });
+  const type = req.query.type || "others";
+  res.json({ url: `/uploads/${type}/${req.file.filename}`, filename: req.file.filename });
 });
 
 module.exports = router;
