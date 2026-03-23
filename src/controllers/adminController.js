@@ -1,6 +1,6 @@
 const { fn, col, literal, Op } = require("sequelize");
 const { sequelize } = require("../config/database");
-const { User, Post, Comment, Report, AuditLog, Tag, Notification, SearchHistory } = require("../models");
+const { User, Post, Comment, Report, AuditLog, Tag, Topic, Notification, SearchHistory } = require("../models");
 const { sendNotification } = require("../socket");
 const { updateFeaturedPosts } = require("../utils/featuredJob");
 
@@ -261,7 +261,7 @@ const getAnalytics = async (req, res, next) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const [userGrowth, postGrowth] = await Promise.all([
+    const [userGrowth, postGrowth, postStats] = await Promise.all([
       User.findAll({
         where: { createdAt: { [Op.gte]: thirtyDaysAgo } },
         attributes: [
@@ -281,8 +281,20 @@ const getAnalytics = async (req, res, next) => {
         group: [fn("DATE", col("createdAt"))],
         order: [[fn("DATE", col("createdAt")), "ASC"]],
         raw: true,
+      }),
+      Post.findOne({
+        attributes: [
+          [fn("SUM", col("viewCount")), "totalViews"],
+          [fn("SUM", col("likeCount")), "totalLikes"]
+        ],
+        where: { isDeleted: false },
+        raw: true
       })
     ]);
+
+    const totalViews = postStats?.totalViews || 0;
+    const totalLikes = postStats?.totalLikes || 0;
+    const engagementRate = totalViews > 0 ? (totalLikes / totalViews) * 100 : 0;
 
     // Top Tags
     const topTags = await Tag.findAll({
@@ -307,11 +319,23 @@ const getAnalytics = async (req, res, next) => {
       raw: true
     });
 
-    // Latest Audit Logs (Last 5)
-    const latestAuditLogs = await AuditLog.findAll({
-      limit: 5,
-      order: [["createdAt", "DESC"]],
-      include: [{ model: User, as: "user", attributes: ["username", "avatar"] }]
+    // Engagement by Topic
+    const engagementByTopic = await Post.findAll({
+      attributes: [
+        "topicId",
+        [fn("COUNT", col("Post.id")), "postCount"],
+        [fn("AVG", col("viewCount")), "avgViews"],
+        [fn("AVG", col("likeCount")), "avgLikes"],
+        [fn("AVG", col("commentCount")), "avgComments"],
+        [fn("SUM", col("viewCount")), "totalViews"],
+        [fn("SUM", col("likeCount")), "totalLikes"]
+      ],
+      include: [{ model: Topic, as: "topic", attributes: ["name"] }],
+      where: { isDeleted: false },
+      group: ["topicId", "topic.id"],
+      order: [[fn("COUNT", col("Post.id")), "DESC"]],
+      raw: true,
+      nest: true
     });
 
     res.json({
@@ -322,8 +346,10 @@ const getAnalytics = async (req, res, next) => {
         pendingReports: reportCount,
         newUsersWeek: newUsers,
         newPostsWeek: newPosts,
-        resolvedReports: await Report.count({ where: { status: "resolved" } })
+        resolvedReports: await Report.count({ where: { status: "resolved" } }),
+        engagementRate: engagementRate.toFixed(1)
       },
+      engagementByTopic,
       topPosts,
       topUsers,
       topTags,
