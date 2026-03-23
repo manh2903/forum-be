@@ -1,4 +1,5 @@
 const { Op, literal } = require("sequelize");
+const { sequelize } = require("../config/database");
 const slugify = require("../utils/slugify");
 const { Post, PostLike, Bookmark, PostTag, Tag, User, Topic, Comment, Notification } = require("../models");
 const { sendNotification } = require("../socket");
@@ -156,44 +157,45 @@ const createPost = async (req, res, next) => {
       finalStatus = "pending";
     }
 
-    const post = await Post.create({
-      title,
-      content,
-      excerpt:
-        excerpt ||
-        content
-          .replace(/<[^>]*>?/gm, "")
-          .replace(/&nbsp;/g, " ")
-          .substring(0, 200),
-      slug,
-      topicId: topicId || null,
-      status: finalStatus,
-      coverImage,
-      readTime,
-      authorId: req.user.id,
-      publishedAt: finalStatus === "published" ? new Date() : null,
+    const fullPost = await sequelize.transaction(async (t) => {
+      const post = await Post.create({
+        title,
+        content,
+        excerpt:
+          excerpt ||
+          content
+            .replace(/<[^>]*>?/gm, "")
+            .replace(/&nbsp;/g, " ")
+            .substring(0, 200),
+        slug,
+        topicId: topicId || null,
+        status: finalStatus,
+        coverImage,
+        readTime,
+        authorId: req.user.id,
+        publishedAt: finalStatus === "published" ? new Date() : null,
+      }, { transaction: t });
+
+      if (tags.length > 0) {
+        await handleTags(post.id, tags, t);
+      }
+
+      if (topicId) await Topic.increment("postCount", { where: { id: topicId }, transaction: t });
+
+      if (status === "published") {
+        await User.increment("reputation", { by: 5, where: { id: req.user.id }, transaction: t });
+      }
+
+      return await Post.findByPk(post.id, {
+        include: [
+          { model: User, as: "author", attributes: ["id", "username", "avatar"] },
+          { model: Tag, as: "tags", attributes: ["id", "name", "slug", "color"], through: { attributes: [] } },
+          { model: Topic, as: "topic", attributes: ["id", "name", "slug"] },
+        ],
+        transaction: t
+      });
     });
 
-    // Handle tags
-    if (tags.length > 0) {
-      await handleTags(post.id, tags);
-    }
-
-    // Update topic post count
-    if (topicId) await Topic.increment("postCount", { where: { id: topicId } });
-
-    // Reputation: +5 khi đăng bài published
-    if (status === "published") {
-      await User.increment("reputation", { by: 5, where: { id: req.user.id } });
-    }
-
-    const fullPost = await Post.findByPk(post.id, {
-      include: [
-        { model: User, as: "author", attributes: ["id", "username", "avatar"] },
-        { model: Tag, as: "tags", attributes: ["id", "name", "slug", "color"], through: { attributes: [] } },
-        { model: Topic, as: "topic", attributes: ["id", "name", "slug"] },
-      ],
-    });
     res.status(201).json({ post: fullPost });
   } catch (err) {
     next(err);
@@ -216,24 +218,27 @@ const updatePost = async (req, res, next) => {
       finalStatus = "pending";
     }
 
-    const updateData = { title, content, excerpt, topicId: topicId || null, status: finalStatus, coverImage };
-    if (finalStatus === "published" && !post.publishedAt) {
-      updateData.publishedAt = new Date();
-      // Reputation: +5 khi chuyển sang published lần đầu
-      await User.increment("reputation", { by: 5, where: { id: post.authorId } });
-    }
-    if (content) updateData.readTime = Math.ceil(content.split(" ").length / 200);
+    const fullPost = await sequelize.transaction(async (t) => {
+      const updateData = { title, content, excerpt, topicId: topicId || null, status: finalStatus, coverImage };
+      if (finalStatus === "published" && !post.publishedAt) {
+        updateData.publishedAt = new Date();
+        await User.increment("reputation", { by: 5, where: { id: post.authorId }, transaction: t });
+      }
+      if (content) updateData.readTime = Math.ceil(content.split(" ").length / 200);
 
-    await post.update(updateData);
-    if (tags) await handleTags(post.id, tags);
+      await post.update(updateData, { transaction: t });
+      if (tags) await handleTags(post.id, tags, t);
 
-    const fullPost = await Post.findByPk(post.id, {
-      include: [
-        { model: User, as: "author", attributes: ["id", "username", "avatar"] },
-        { model: Tag, as: "tags", attributes: ["id", "name", "slug", "color"], through: { attributes: [] } },
-        { model: Topic, as: "topic", attributes: ["id", "name", "slug"] },
-      ],
+      return await Post.findByPk(post.id, {
+        include: [
+          { model: User, as: "author", attributes: ["id", "username", "avatar"] },
+          { model: Tag, as: "tags", attributes: ["id", "name", "slug", "color"], through: { attributes: [] } },
+          { model: Topic, as: "topic", attributes: ["id", "name", "slug"] },
+        ],
+        transaction: t
+      });
     });
+
     res.json({ post: fullPost });
   } catch (err) {
     next(err);
@@ -248,11 +253,12 @@ const deletePost = async (req, res, next) => {
     if (post.authorId !== req.user.id && req.user.role === "user") {
       return res.status(403).json({ message: "Forbidden" });
     }
-    await post.update({ isDeleted: true });
-    // Reputation: -5 khi xóa bài published
-    if (post.status === "published") {
-      await User.decrement("reputation", { by: 5, where: { id: post.authorId } });
-    }
+    await sequelize.transaction(async (t) => {
+      await post.update({ isDeleted: true }, { transaction: t });
+      if (post.status === "published") {
+        await User.decrement("reputation", { by: 5, where: { id: post.authorId }, transaction: t });
+      }
+    });
     res.json({ message: "Post deleted" });
   } catch (err) {
     next(err);
@@ -265,31 +271,44 @@ const likePost = async (req, res, next) => {
     const post = await Post.findByPk(req.params.id);
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    const [, created] = await PostLike.findOrCreate({ where: { userId: req.user.id, postId: post.id } });
-    if (created) {
-      await post.increment("likeCount");
-      // Reputation: +2 khi bài được like
-      await User.increment("reputation", { by: 2, where: { id: post.authorId } });
-      if (post.authorId !== req.user.id) {
-        const notif = await Notification.create({
-          recipientId: post.authorId,
-          senderId: req.user.id,
-          type: "like_post",
-          entityType: "post",
-          entityId: post.id,
-          content: `${req.user.username} đã thích bài viết của bạn "${post.title}"`,
-          link: `/posts/${post.slug}`,
-          slug: post.slug,
-        });
-        sendNotification(post.authorId, notif);
+    const result = await sequelize.transaction(async (t) => {
+      const [, created] = await PostLike.findOrCreate({ 
+        where: { userId: req.user.id, postId: post.id },
+        transaction: t 
+      });
+      
+      if (created) {
+        await post.increment("likeCount", { transaction: t });
+        await User.increment("reputation", { by: 2, where: { id: post.authorId }, transaction: t });
+        
+        if (post.authorId !== req.user.id) {
+          const notif = await Notification.create({
+            recipientId: post.authorId,
+            senderId: req.user.id,
+            type: "like_post",
+            entityType: "post",
+            entityId: post.id,
+            content: `${req.user.username} đã thích bài viết của bạn "${post.title}"`,
+            link: `/posts/${post.slug}`,
+            slug: post.slug,
+          }, { transaction: t });
+          return { liked: true, notif };
+        }
+        return { liked: true };
       }
-      return res.json({ liked: true, likeCount: post.likeCount + 1 });
-    }
-    // Unlike: -2 điểm (hoàn trả)
-    await PostLike.destroy({ where: { userId: req.user.id, postId: post.id } });
-    await post.decrement("likeCount");
-    await User.decrement("reputation", { by: 2, where: { id: post.authorId } });
-    res.json({ liked: false, likeCount: Math.max(0, post.likeCount - 1) });
+
+      await PostLike.destroy({ where: { userId: req.user.id, postId: post.id }, transaction: t });
+      await post.decrement("likeCount", { transaction: t });
+      await User.decrement("reputation", { by: 2, where: { id: post.authorId }, transaction: t });
+      return { liked: false };
+    });
+
+    if (result.notif) sendNotification(post.authorId, result.notif);
+    
+    res.json({ 
+      liked: result.liked, 
+      likeCount: result.liked ? post.likeCount + 1 : Math.max(0, post.likeCount - 1) 
+    });
   } catch (err) {
     next(err);
   }
@@ -301,18 +320,23 @@ const bookmarkPost = async (req, res, next) => {
     const post = await Post.findByPk(req.params.id);
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    const [, created] = await Bookmark.findOrCreate({ where: { userId: req.user.id, postId: post.id } });
-    if (created) {
-      await post.increment("bookmarkCount");
-      // Reputation: +1 khi bài được bookmark
-      await User.increment("reputation", { by: 1, where: { id: post.authorId } });
-      return res.json({ bookmarked: true });
-    }
-    // Un-bookmark: -1 điểm (hoàn trả)
-    await Bookmark.destroy({ where: { userId: req.user.id, postId: post.id } });
-    await post.decrement("bookmarkCount");
-    await User.decrement("reputation", { by: 1, where: { id: post.authorId } });
-    res.json({ bookmarked: false });
+    const result = await sequelize.transaction(async (t) => {
+      const [, created] = await Bookmark.findOrCreate({ 
+        where: { userId: req.user.id, postId: post.id },
+        transaction: t 
+      });
+      if (created) {
+        await post.increment("bookmarkCount", { transaction: t });
+        await User.increment("reputation", { by: 1, where: { id: post.authorId }, transaction: t });
+        return { bookmarked: true };
+      }
+      await Bookmark.destroy({ where: { userId: req.user.id, postId: post.id }, transaction: t });
+      await post.decrement("bookmarkCount", { transaction: t });
+      await User.decrement("reputation", { by: 1, where: { id: post.authorId }, transaction: t });
+      return { bookmarked: false };
+    });
+
+    res.json({ bookmarked: result.bookmarked });
   } catch (err) {
     next(err);
   }
@@ -333,17 +357,27 @@ async function generateUniqueSlug(title, excludeId = null) {
 }
 
 // Helper: handle tags (create if not exist, link to post)
-async function handleTags(postId, tagNames) {
-  await PostTag.destroy({ where: { postId } });
+async function handleTags(postId, tagNames, transaction = null) {
+  const options = transaction ? { transaction } : {};
+  await PostTag.destroy({ where: { postId }, ...options });
   const tagIds = [];
   for (const name of tagNames) {
     const slug = slugify(name);
-    const [tag, created] = await Tag.findOrCreate({ where: { slug }, defaults: { name, slug } });
+    const [tag] = await Tag.findOrCreate({ 
+      where: { slug }, 
+      defaults: { name, slug }, 
+      ...options 
+    });
     tagIds.push(tag.id);
   }
-  await Promise.all(tagIds.map((tagId) => PostTag.findOrCreate({ where: { postId, tagId } })));
-  // Update tag post counts
-  await Promise.all(tagIds.map((tagId) => Tag.update({ postCount: literal("postCount + 1") }, { where: { id: tagId } })));
+  await Promise.all(tagIds.map((tagId) => PostTag.findOrCreate({ 
+    where: { postId, tagId }, 
+    ...options 
+  })));
+  await Promise.all(tagIds.map((tagId) => Tag.update(
+    { postCount: literal("postCount + 1") }, 
+    { where: { id: tagId }, ...options }
+  )));
 }
 
 module.exports = { listPosts, getPost, createPost, updatePost, deletePost, likePost, bookmarkPost };

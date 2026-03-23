@@ -3,6 +3,8 @@ const { Op } = require("sequelize");
 const passport = require("passport");
 const { User } = require("../models");
 const { generateTokens } = require("../middlewares/auth");
+const { sendOTP } = require("../utils/email");
+const crypto = require("crypto");
 
 // POST /api/auth/register
 const register = async (req, res, next) => {
@@ -21,13 +23,31 @@ const register = async (req, res, next) => {
     const userCount = await User.count();
     const role = userCount === 0 ? "admin" : "user";
 
-    const user = await User.create({ username, fullName, email, password, studentId, class: className, isVerified: true, role });
-    const { accessToken, refreshToken } = generateTokens(user);
+    // Generate 6-digit OTP for verification
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = new Date(Date.now() + 30 * 60 * 1000); // 30 mins
+
+    const user = await User.create({ 
+      username, 
+      fullName, 
+      email, 
+      password, 
+      studentId, 
+      class: className, 
+      isVerified: role === 'admin' ? true : false, 
+      role,
+      otpCode: role === 'admin' ? null : otp,
+      otpExpires: role === 'admin' ? null : expires
+    });
+
+    if (role !== 'admin') {
+      await sendOTP(email, otp);
+    }
+
     res.status(201).json({
-      message: "Registration successful",
+      message: role === 'admin' ? "Registration successful" : "Mã OTP đã được gửi đến email để xác thực tài khoản",
       user: user.toPublicJSON(),
-      accessToken,
-      refreshToken,
+      requireVerification: role !== 'admin'
     });
   } catch (err) {
     next(err);
@@ -44,6 +64,7 @@ const login = async (req, res, next) => {
     });
     if (!user || !user.password) return res.status(401).json({ message: "Thông tin đăng nhập không chính xác" });
     if (user.isBanned) return res.status(403).json({ message: "Account banned", reason: user.banReason });
+    if (!user.isVerified) return res.status(403).json({ message: "Tài khoản chưa được xác thực. Vui lòng kiểm tra email để lấy mã OTP.", email: user.email });
 
     const valid = await user.comparePassword(password);
     if (!valid) return res.status(401).json({ message: "Invalid credentials" });
@@ -93,4 +114,116 @@ const githubCallback = (req, res) => {
   res.redirect(`${clientUrl}/auth/callback?token=${accessToken}&refresh=${refreshToken}`);
 };
 
-module.exports = { register, login, refresh, getMe, googleCallback, githubCallback };
+// POST /api/auth/forgot-password
+const forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ where: { email } });
+    if (!user) return res.status(404).json({ message: "Email không tồn tại trên hệ thống" });
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = new Date(Date.now() + 30 * 60 * 1000); // 30 mins
+
+    await user.update({
+      otpCode: otp,
+      otpExpires: expires,
+    });
+
+    await sendOTP(email, otp);
+    res.json({ message: "Mã OTP đã được gửi đến email của bạn" });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/auth/verify-otp
+const verifyOTP = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+    const user = await User.findOne({ where: { email } });
+    
+    if (!user || user.otpCode !== otp || user.otpExpires < new Date()) {
+      return res.status(400).json({ message: "Mã OTP không hợp lệ hoặc đã hết hạn" });
+    }
+
+    // Generate temporary token for password reset
+    const resetToken = jwt.sign({ id: user.id, type: 'reset' }, process.env.JWT_SECRET || 'secret', { expiresIn: '15m' });
+    
+    // Clear OTP after success
+    await user.update({ otpCode: null, otpExpires: null });
+
+    res.json({ message: "Xác thực thành công", resetToken });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/auth/reset-password
+const resetPassword = async (req, res, next) => {
+  try {
+    const { resetToken, newPassword } = req.body;
+    const decoded = jwt.verify(resetToken, process.env.JWT_SECRET || 'secret');
+    if (decoded.type !== 'reset') throw new Error();
+
+    const user = await User.findByPk(decoded.id);
+    if (!user) return res.status(404).json({ message: "Người dùng không tồn tại" });
+
+    await user.update({ password: newPassword });
+    res.json({ message: "Đổi mật khẩu thành công" });
+  } catch (err) {
+    res.status(400).json({ message: "Token không hợp lệ hoặc đã hết hạn" });
+  }
+};
+
+// POST /api/auth/resend-otp
+const resendOTP = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ where: { email } });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = new Date(Date.now() + 30 * 60 * 1000);
+
+    await user.update({ otpCode: otp, otpExpires: expires });
+    await sendOTP(email, otp);
+
+    res.json({ message: "Mã OTP mới đã được gửi" });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/auth/verify-email
+const verifyEmail = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+    const user = await User.findOne({ where: { email } });
+    
+    if (!user || user.otpCode !== otp || user.otpExpires < new Date()) {
+      return res.status(400).json({ message: "Mã OTP không hợp lệ hoặc đã hết hạn" });
+    }
+
+    await user.update({ isVerified: true, otpCode: null, otpExpires: null });
+    const { accessToken, refreshToken } = generateTokens(user);
+
+    res.json({ message: "Xác thực email thành công", user: user.toPublicJSON(), accessToken, refreshToken });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { 
+  register, 
+  login, 
+  refresh, 
+  getMe, 
+  googleCallback, 
+  githubCallback,
+  forgotPassword,
+  verifyOTP,
+  resetPassword,
+  resendOTP,
+  verifyEmail
+};

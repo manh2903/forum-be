@@ -1,4 +1,5 @@
 const { Comment, CommentLike, User, Post, Notification } = require("../models");
+const { sequelize } = require("../config/database");
 const { sendNotification } = require("../socket");
 
 const extractMentions = (content) => {
@@ -96,74 +97,77 @@ const createComment = async (req, res, next) => {
       depth = parent.depth + 1;
     }
 
-    const comment = await Comment.create({ content, postId, parentId, depth, authorId: req.user.id });
-    await post.increment("commentCount");
+    const result = await sequelize.transaction(async (t) => {
+      const comment = await Comment.create({ 
+        content, postId, parentId, depth, authorId: req.user.id 
+      }, { transaction: t });
+      
+      await post.increment("commentCount", { transaction: t });
 
-    // Reputation: +2 cho tác giả bài viết khi nhận comment (không được tự comment bài mình)
-    if (post.authorId !== req.user.id) {
-      await User.increment("reputation", { by: 2, where: { id: post.authorId } });
-    }
+      if (post.authorId !== req.user.id) {
+        await User.increment("reputation", { by: 2, where: { id: post.authorId }, transaction: t });
+      }
 
-    // Notifications
-    const notifications = [];
-    if (post.authorId !== req.user.id) {
-      notifications.push(
-        Notification.create({
-          recipientId: post.authorId,
-          senderId: req.user.id,
-          type: parentId ? "comment" : "comment",
-          entityType: "comment",
-          entityId: comment.id,
-          content: `${req.user.username} đã bình luận bài viết "${post.title}" của bạn`,
-          link: `/posts/${post.slug}#comment-${comment.id}`,
-          slug: post.slug,
-        }),
-      );
-    }
-
-    // Notify parent comment author
-    if (parentId) {
-      const parent = await Comment.findByPk(parentId);
-      if (parent && parent.authorId !== req.user.id && parent.authorId !== post.authorId) {
+      const notifications = [];
+      if (post.authorId !== req.user.id) {
         notifications.push(
           Notification.create({
-            recipientId: parent.authorId,
+            recipientId: post.authorId,
             senderId: req.user.id,
-            type: "reply",
+            type: "comment",
             entityType: "comment",
             entityId: comment.id,
-            content: `${req.user.username} đã phản hồi bình luận của bạn`,
+            content: `${req.user.username} đã bình luận bài viết "${post.title}" của bạn`,
             link: `/posts/${post.slug}#comment-${comment.id}`,
             slug: post.slug,
-          }),
+          }, { transaction: t }),
         );
       }
-    }
 
-    // Handle @mentions
-    const mentions = extractMentions(content);
-    for (const username of mentions) {
-      const mentionedUser = await User.findOne({ where: { username } });
-      if (mentionedUser && mentionedUser.id !== req.user.id) {
-        notifications.push(
-          Notification.create({
-            recipientId: mentionedUser.id,
-            senderId: req.user.id,
-            type: "mention",
-            entityType: "comment",
-            entityId: comment.id,
-            content: `${req.user.username} đã nhắc đến bạn trong một bình luận`,
-            link: `/posts/${post.slug}#comment-${comment.id}`,
-            slug: post.slug,
-          }),
-        );
+      if (parentId) {
+        const parent = await Comment.findByPk(parentId, { transaction: t });
+        if (parent && parent.authorId !== req.user.id && parent.authorId !== post.authorId) {
+          notifications.push(
+            Notification.create({
+              recipientId: parent.authorId,
+              senderId: req.user.id,
+              type: "reply",
+              entityType: "comment",
+              entityId: comment.id,
+              content: `${req.user.username} đã phản hồi bình luận của bạn`,
+              link: `/posts/${post.slug}#comment-${comment.id}`,
+              slug: post.slug,
+            }, { transaction: t }),
+          );
+        }
       }
-    }
 
-    const notifs = await Promise.all(notifications);
-    notifs.forEach((n) => n && sendNotification(n.recipientId, n));
+      const mentions = extractMentions(content);
+      for (const username of mentions) {
+        const mentionedUser = await User.findOne({ where: { username }, transaction: t });
+        if (mentionedUser && mentionedUser.id !== req.user.id) {
+          notifications.push(
+            Notification.create({
+              recipientId: mentionedUser.id,
+              senderId: req.user.id,
+              type: "mention",
+              entityType: "comment",
+              entityId: comment.id,
+              content: `${req.user.username} đã nhắc đến bạn trong một bình luận`,
+              link: `/posts/${post.slug}#comment-${comment.id}`,
+              slug: post.slug,
+            }, { transaction: t }),
+          );
+        }
+      }
 
-    const fullComment = await Comment.findByPk(comment.id, {
+      const createdNotifs = await Promise.all(notifications);
+      return { comment, notifs: createdNotifs };
+    });
+
+    result.notifs.forEach((n) => n && sendNotification(n.recipientId, n));
+
+    const fullComment = await Comment.findByPk(result.comment.id, {
       include: [{ model: User, as: "author", attributes: ["id", "username", "avatar", "reputation", "role"] }],
     });
     res.status(201).json({ comment: { ...fullComment.toJSON(), isLiked: false, replies: [] } });
@@ -191,13 +195,17 @@ const deleteComment = async (req, res, next) => {
     const comment = await Comment.findByPk(req.params.id);
     if (!comment) return res.status(404).json({ message: "Comment not found" });
     if (comment.authorId !== req.user.id && req.user.role === "user") return res.status(403).json({ message: "Forbidden" });
-    await comment.update({ isDeleted: true, content: "[Comment deleted]" });
-    await Post.decrement("commentCount", { where: { id: comment.postId } });
-    // Reputation: -2 khi comment bị xóa (hoàn trả)
-    const post = await Post.findByPk(comment.postId);
-    if (post && post.authorId !== comment.authorId) {
-      await User.decrement("reputation", { by: 2, where: { id: post.authorId } });
-    }
+    
+    await sequelize.transaction(async (t) => {
+      await comment.update({ isDeleted: true, content: "[Comment deleted]" }, { transaction: t });
+      await Post.decrement("commentCount", { where: { id: comment.postId }, transaction: t });
+      
+      const post = await Post.findByPk(comment.postId, { transaction: t });
+      if (post && post.authorId !== comment.authorId) {
+        await User.decrement("reputation", { by: 2, where: { id: post.authorId }, transaction: t });
+      }
+    });
+
     res.json({ message: "Comment deleted" });
   } catch (err) {
     next(err);
@@ -210,33 +218,45 @@ const likeComment = async (req, res, next) => {
     const comment = await Comment.findByPk(req.params.id);
     if (!comment) return res.status(404).json({ message: "Comment not found" });
 
-    const [, created] = await CommentLike.findOrCreate({ where: { userId: req.user.id, commentId: comment.id } });
-    if (created) {
-      await comment.increment("likeCount");
-      // Reputation: +1 khi comment được like
-      await User.increment("reputation", { by: 1, where: { id: comment.authorId } });
-      if (comment.authorId !== req.user.id) {
-        // Need post slug for notification
-        const post = await Post.findByPk(comment.postId, { attributes: ['slug'] });
-        const notif = await Notification.create({
-          recipientId: comment.authorId,
-          senderId: req.user.id,
-          type: "like_comment",
-          entityType: "comment",
-          entityId: comment.id,
-          content: `${req.user.username} đã thích bình luận của bạn`,
-          link: `/posts/${post?.slug || 'detail'}#comment-${comment.id}`,
-          slug: post?.slug,
-        });
-        sendNotification(comment.authorId, notif);
+    const result = await sequelize.transaction(async (t) => {
+      const [, created] = await CommentLike.findOrCreate({ 
+        where: { userId: req.user.id, commentId: comment.id },
+        transaction: t
+      });
+      
+      if (created) {
+        await comment.increment("likeCount", { transaction: t });
+        await User.increment("reputation", { by: 1, where: { id: comment.authorId }, transaction: t });
+        
+        if (comment.authorId !== req.user.id) {
+          const post = await Post.findByPk(comment.postId, { attributes: ['slug'], transaction: t });
+          const notif = await Notification.create({
+            recipientId: comment.authorId,
+            senderId: req.user.id,
+            type: "like_comment",
+            entityType: "comment",
+            entityId: comment.id,
+            content: `${req.user.username} đã thích bình luận của bạn`,
+            link: `/posts/${post?.slug || 'detail'}#comment-${comment.id}`,
+            slug: post?.slug,
+          }, { transaction: t });
+          return { liked: true, notif };
+        }
+        return { liked: true };
       }
-      return res.json({ liked: true, likeCount: comment.likeCount + 1 });
-    }
-    // Unlike comment: -1 điểm (hoàn trả)
-    await CommentLike.destroy({ where: { userId: req.user.id, commentId: comment.id } });
-    await comment.decrement("likeCount");
-    await User.decrement("reputation", { by: 1, where: { id: comment.authorId } });
-    res.json({ liked: false, likeCount: Math.max(0, comment.likeCount - 1) });
+
+      await CommentLike.destroy({ where: { userId: req.user.id, commentId: comment.id }, transaction: t });
+      await comment.decrement("likeCount", { transaction: t });
+      await User.decrement("reputation", { by: 1, where: { id: comment.authorId }, transaction: t });
+      return { liked: false };
+    });
+
+    if (result.notif) sendNotification(comment.authorId, result.notif);
+    
+    res.json({ 
+      liked: result.liked, 
+      likeCount: result.liked ? comment.likeCount + 1 : Math.max(0, comment.likeCount - 1) 
+    });
   } catch (err) {
     next(err);
   }

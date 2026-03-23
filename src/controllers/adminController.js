@@ -1,5 +1,7 @@
 const { fn, col, literal, Op } = require("sequelize");
-const { User, Post, Comment, Report, AuditLog, Tag } = require("../models");
+const { sequelize } = require("../config/database");
+const { User, Post, Comment, Report, AuditLog, Tag, Notification } = require("../models");
+const { sendNotification } = require("../socket");
 const { updateFeaturedPosts } = require("../utils/featuredJob");
 
 // GET /api/admin/users
@@ -34,16 +36,20 @@ const banUser = async (req, res, next) => {
     if (!user) return res.status(404).json({ message: "User not found" });
     if (user.role === "admin") return res.status(403).json({ message: "Cannot ban admin" });
 
-    await user.update({ isBanned: true, banReason });
-    await AuditLog.create({
-      userId: req.user.id,
-      action: "ban_user",
-      targetType: "user",
-      targetId: user.id,
-      details: { banReason },
-      ipAddress: req.ip,
+    const updatedUser = await sequelize.transaction(async (t) => {
+      await user.update({ isBanned: true, banReason }, { transaction: t });
+      await AuditLog.create({
+        userId: req.user.id,
+        action: "ban_user",
+        targetType: "user",
+        targetId: user.id,
+        details: { banReason },
+        ipAddress: req.ip,
+      }, { transaction: t });
+      return user;
     });
-    res.json({ message: "User banned", user });
+
+    res.json({ message: "User banned", user: updatedUser });
   } catch (err) {
     next(err);
   }
@@ -54,9 +60,20 @@ const unbanUser = async (req, res, next) => {
   try {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
-    await user.update({ isBanned: false, banReason: null });
-    await AuditLog.create({ userId: req.user.id, action: "unban_user", targetType: "user", targetId: user.id, ipAddress: req.ip });
-    res.json({ message: "User unbanned", user });
+
+    const updatedUser = await sequelize.transaction(async (t) => {
+      await user.update({ isBanned: false, banReason: null }, { transaction: t });
+      await AuditLog.create({ 
+        userId: req.user.id, 
+        action: "unban_user", 
+        targetType: "user", 
+        targetId: user.id, 
+        ipAddress: req.ip 
+      }, { transaction: t });
+      return user;
+    });
+
+    res.json({ message: "User unbanned", user: updatedUser });
   } catch (err) {
     next(err);
   }
@@ -69,16 +86,21 @@ const changeRole = async (req, res, next) => {
     if (!["user", "moderator", "admin"].includes(role)) return res.status(400).json({ message: "Invalid role" });
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
-    await user.update({ role });
-    await AuditLog.create({
-      userId: req.user.id,
-      action: "change_role",
-      targetType: "user",
-      targetId: user.id,
-      details: { role },
-      ipAddress: req.ip,
+
+    const updatedUser = await sequelize.transaction(async (t) => {
+      await user.update({ role }, { transaction: t });
+      await AuditLog.create({
+        userId: req.user.id,
+        action: "change_role",
+        targetType: "user",
+        targetId: user.id,
+        details: { role },
+        ipAddress: req.ip,
+      }, { transaction: t });
+      return user;
     });
-    res.json({ message: "Role updated", user });
+
+    res.json({ message: "Role updated", user: updatedUser });
   } catch (err) {
     next(err);
   }
@@ -167,16 +189,20 @@ const updatePostAdmin = async (req, res, next) => {
     const post = await Post.findByPk(req.params.id);
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    await post.update({ title, content, topicId, status, isPinned, isFeatured });
-    await AuditLog.create({
-      userId: req.user.id,
-      action: "update_post_admin",
-      targetType: "post",
-      targetId: post.id,
-      details: { updatedFields: req.body },
-      ipAddress: req.ip,
+    const updatedPost = await sequelize.transaction(async (t) => {
+      await post.update({ title, content, topicId, status, isPinned, isFeatured }, { transaction: t });
+      await AuditLog.create({
+        userId: req.user.id,
+        action: "update_post_admin",
+        targetType: "post",
+        targetId: post.id,
+        details: { updatedFields: req.body },
+        ipAddress: req.ip,
+      }, { transaction: t });
+      return post;
     });
-    res.json({ message: "Đã cập nhật bài viết", post });
+
+    res.json({ message: "Đã cập nhật bài viết", post: updatedPost });
   } catch (err) {
     next(err);
   }
@@ -383,34 +409,36 @@ const approvePost = async (req, res, next) => {
     const post = await Post.findByPk(req.params.id);
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    const isFirstPublished = !post.publishedAt;
-    await post.update({ status: "published", publishedAt: post.publishedAt || new Date() });
+    const result = await sequelize.transaction(async (t) => {
+      const isFirstPublished = !post.publishedAt;
+      await post.update({ status: "published", publishedAt: post.publishedAt || new Date() }, { transaction: t });
 
-    if (isFirstPublished) {
-      await User.increment("reputation", { by: 5, where: { id: post.authorId } });
-    }
+      if (isFirstPublished) {
+        await User.increment("reputation", { by: 5, where: { id: post.authorId }, transaction: t });
+      }
 
-    const { Notification } = require("../models");
-    const { sendNotification } = require("../socket");
-    const notif = await Notification.create({
-      recipientId: post.authorId,
-      senderId: req.user.id,
-      type: "system",
-      content: `Bài viết "${post.title}" của bạn đã được phê duyệt!`,
-      link: `/posts/${post.slug}`,
-      slug: post.slug,
+      const notif = await Notification.create({
+        recipientId: post.authorId,
+        senderId: req.user.id,
+        type: "system",
+        content: `Bài viết "${post.title}" của bạn đã được phê duyệt!`,
+        link: `/posts/${post.slug}`,
+        slug: post.slug,
+      }, { transaction: t });
+
+      await AuditLog.create({
+        userId: req.user.id,
+        action: "approve_post",
+        targetType: "post",
+        targetId: post.id,
+        ipAddress: req.ip,
+      }, { transaction: t });
+
+      return { post, notif };
     });
-    sendNotification(post.authorId, notif);
 
-    await AuditLog.create({
-      userId: req.user.id,
-      action: "approve_post",
-      targetType: "post",
-      targetId: post.id,
-      ipAddress: req.ip,
-    });
-
-    res.json({ message: "Bài viết đã được phê duyệt", post });
+    sendNotification(post.authorId, result.notif);
+    res.json({ message: "Bài viết đã được phê duyệt", post: result.post });
   } catch (err) {
     next(err);
   }
@@ -422,30 +450,32 @@ const rejectPost = async (req, res, next) => {
     const post = await Post.findByPk(req.params.id);
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    await post.update({ status: "rejected" });
+    const result = await sequelize.transaction(async (t) => {
+      await post.update({ status: "rejected" }, { transaction: t });
 
-    const { Notification } = require("../models");
-    const { sendNotification } = require("../socket");
-    const notif = await Notification.create({
-      recipientId: post.authorId,
-      senderId: req.user.id,
-      type: "system",
-      content: `Bài viết "${post.title}" của bạn bị từ chối phê duyệt${reason ? `: ${reason}` : ""}.`,
-      link: `/posts/edit/${post.id}`,
-      slug: post.slug,
+      const notif = await Notification.create({
+        recipientId: post.authorId,
+        senderId: req.user.id,
+        type: "system",
+        content: `Bài viết "${post.title}" của bạn bị từ chối phê duyệt${reason ? `: ${reason}` : ""}.`,
+        link: `/posts/edit/${post.id}`,
+        slug: post.slug,
+      }, { transaction: t });
+
+      await AuditLog.create({
+        userId: req.user.id,
+        action: "reject_post",
+        targetType: "post",
+        targetId: post.id,
+        details: { reason },
+        ipAddress: req.ip,
+      }, { transaction: t });
+
+      return { post, notif };
     });
-    sendNotification(post.authorId, notif);
 
-    await AuditLog.create({
-      userId: req.user.id,
-      action: "reject_post",
-      targetType: "post",
-      targetId: post.id,
-      details: { reason },
-      ipAddress: req.ip,
-    });
-
-    res.json({ message: "Bài viết đã bị từ chối", post });
+    sendNotification(post.authorId, result.notif);
+    res.json({ message: "Bài viết đã bị từ chối", post: result.post });
   } catch (err) {
     next(err);
   }
@@ -456,17 +486,19 @@ const restorePost = async (req, res, next) => {
     const post = await Post.unscoped().findByPk(req.params.id);
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    await post.update({ isDeleted: false });
-
-    await AuditLog.create({
-      userId: req.user.id,
-      action: "restore_post",
-      targetType: "post",
-      targetId: post.id,
-      ipAddress: req.ip,
+    const updatedPost = await sequelize.transaction(async (t) => {
+      await post.update({ isDeleted: false }, { transaction: t });
+      await AuditLog.create({
+        userId: req.user.id,
+        action: "restore_post",
+        targetType: "post",
+        targetId: post.id,
+        ipAddress: req.ip,
+      }, { transaction: t });
+      return post;
     });
 
-    res.json({ message: "Đã khôi phục bài viết thành công", post });
+    res.json({ message: "Đã khôi phục bài viết thành công", post: updatedPost });
   } catch (err) {
     next(err);
   }
@@ -487,16 +519,20 @@ const updateUser = async (req, res, next) => {
       if (existing) return res.status(400).json({ message: "Email đã tồn tại" });
     }
 
-    await user.update({ fullName, username, email, studentId, class: className, reputation, role });
-    await AuditLog.create({
-      userId: req.user.id,
-      action: "update_user_info",
-      targetType: "user",
-      targetId: user.id,
-      details: { updatedFields: req.body },
-      ipAddress: req.ip,
+    const updatedUser = await sequelize.transaction(async (t) => {
+      await user.update({ fullName, username, email, studentId, class: className, reputation, role }, { transaction: t });
+      await AuditLog.create({
+        userId: req.user.id,
+        action: "update_user_info",
+        targetType: "user",
+        targetId: user.id,
+        details: { updatedFields: req.body },
+        ipAddress: req.ip,
+      }, { transaction: t });
+      return user;
     });
-    res.json({ message: "Đã cập nhật thông tin người dùng", user });
+
+    res.json({ message: "Đã cập nhật thông tin người dùng", user: updatedUser });
   } catch (err) {
     next(err);
   }

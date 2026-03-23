@@ -1,4 +1,5 @@
-const { Report, User, Post, Comment, Notification } = require("../models");
+const { Report, User, Post, Comment, Notification, AuditLog } = require("../models");
+const { sequelize } = require("../config/database");
 const { sendNotification } = require("../socket");
 
 // POST /api/reports
@@ -45,31 +46,32 @@ const resolveReport = async (req, res, next) => {
     const report = await Report.findByPk(req.params.id);
     if (!report) return res.status(404).json({ message: "Report not found" });
 
-    await report.update({ status, resolution, resolvedById: req.user.id, resolvedAt: new Date() });
+    const result = await sequelize.transaction(async (t) => {
+      await report.update({ status, resolution, resolvedById: req.user.id, resolvedAt: new Date() }, { transaction: t });
 
-    // Notify reporter
-    const notif = await Notification.create({
-      recipientId: report.reporterId,
-      senderId: req.user.id,
-      type: "report_resolved",
-      content: `Báo cáo của bạn đã được ${status === 'resolved' ? 'xử lý' : 'bỏ qua'}: ${resolution || ""}`,
-      entityType: "report",
-      entityId: report.id,
+      const notif = await Notification.create({
+        recipientId: report.reporterId,
+        senderId: req.user.id,
+        type: "report_resolved",
+        content: `Báo cáo của bạn đã được ${status === 'resolved' ? 'xử lý' : 'bỏ qua'}: ${resolution || ""}`,
+        entityType: "report",
+        entityId: report.id,
+      }, { transaction: t });
+
+      await AuditLog.create({
+        userId: req.user.id,
+        action: "resolve_report",
+        targetType: "report",
+        targetId: report.id,
+        details: { status, resolution },
+        ipAddress: req.ip,
+      }, { transaction: t });
+
+      return { report, notif };
     });
-    sendNotification(report.reporterId, notif);
 
-    // Audit log
-    const { AuditLog } = require("../models");
-    await AuditLog.create({
-      userId: req.user.id,
-      action: "resolve_report",
-      targetType: "report",
-      targetId: report.id,
-      details: { status, resolution },
-      ipAddress: req.ip,
-    });
-
-    res.json({ report });
+    sendNotification(report.reporterId, result.notif);
+    res.json({ report: result.report });
   } catch (err) {
     next(err);
   }

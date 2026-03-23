@@ -29,6 +29,9 @@ const User = sequelize.define(
     emailNotifications: { type: DataTypes.BOOLEAN, defaultValue: true },
     lastLogin: { type: DataTypes.DATE, defaultValue: null },
     resetPasswordToken: { type: DataTypes.STRING(255), defaultValue: null },
+    resetPasswordExpires: { type: DataTypes.DATE, defaultValue: null },
+    otpCode: { type: DataTypes.STRING(6), defaultValue: null },
+    otpExpires: { type: DataTypes.DATE, defaultValue: null },
     isDeleted: { type: DataTypes.BOOLEAN, defaultValue: false },
   },
   {
@@ -53,7 +56,7 @@ User.prototype.comparePassword = async function (password) {
 };
 
 User.prototype.toPublicJSON = function () {
-  const { password, resetPasswordToken, resetPasswordExpires, googleId, githubId, ...rest } = this.toJSON();
+  const { password, resetPasswordToken, resetPasswordExpires, otpCode, otpExpires, googleId, githubId, ...rest } = this.toJSON();
   return { ...rest, hasPassword: !!password };
 };
 
