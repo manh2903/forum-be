@@ -13,14 +13,37 @@ const getProfile = async (req, res, next) => {
 
     const followerCount = await Follow.count({ where: { followingId: user.id } });
     const followingCount = await Follow.count({ where: { followerId: user.id } });
-    const postCount = await Post.count({ where: { authorId: user.id, status: "published" } });
 
-    let isFollowing = false;
-    if (req.user) {
-      isFollowing = !!(await Follow.findOne({ where: { followerId: req.user.id, followingId: user.id } }));
+    // Detailed post counts
+    const isOwner = req.user && req.user.id === user.id;
+    const isAdmin = req.user && (req.user.role === 'admin' || req.user.role === 'moderator');
+    
+    // Everyone sees published count
+    const publishedCount = await Post.count({ where: { authorId: user.id, status: "published" } });
+    
+    let stats = { postCount: publishedCount, followerCount, followingCount, isFollowing: false };
+
+    // Owners and Admins see additional counts
+    if (isOwner || isAdmin) {
+      const [pendingCount, rejectedCount, draftCount] = await Promise.all([
+        Post.count({ where: { authorId: user.id, status: "pending" } }),
+        Post.count({ where: { authorId: user.id, status: "rejected" } }),
+        Post.count({ where: { authorId: user.id, status: "draft" } }),
+      ]);
+      stats = { 
+        ...stats, 
+        pendingCount, 
+        rejectedCount, 
+        draftCount, 
+        totalPostCount: publishedCount + pendingCount + rejectedCount + draftCount 
+      };
     }
 
-    res.json({ user: { ...user.toJSON(), followerCount, followingCount, postCount, isFollowing } });
+    if (req.user) {
+      stats.isFollowing = !!(await Follow.findOne({ where: { followerId: req.user.id, followingId: user.id } }));
+    }
+
+    res.json({ user: { ...user.toJSON(), ...stats } });
   } catch (err) {
     next(err);
   }
@@ -138,4 +161,30 @@ const listUsers = async (req, res, next) => {
   }
 };
 
-module.exports = { getProfile, updateProfile, changePassword, followUser, unfollowUser, listUsers };
+// GET /api/users/:id/followers
+const getFollowers = async (req, res, next) => {
+  try {
+    const followers = await Follow.findAll({
+      where: { followingId: req.params.id },
+      include: [{ model: User, as: "follower", attributes: ["id", "username", "fullName", "avatar", "reputation", "role"] }],
+    });
+    res.json({ users: followers.map((f) => f.follower) });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/users/:id/following
+const getFollowing = async (req, res, next) => {
+  try {
+    const following = await Follow.findAll({
+      where: { followerId: req.params.id },
+      include: [{ model: User, as: "following", attributes: ["id", "username", "fullName", "avatar", "reputation", "role"] }],
+    });
+    res.json({ users: following.map((f) => f.following) });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getProfile, updateProfile, changePassword, followUser, unfollowUser, listUsers, getFollowers, getFollowing };

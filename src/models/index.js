@@ -22,6 +22,8 @@ Comment.belongsTo(User, { foreignKey: "authorId", as: "author" });
 // Follow
 User.belongsToMany(User, { through: Follow, as: "followers", foreignKey: "followingId", otherKey: "followerId" });
 User.belongsToMany(User, { through: Follow, as: "following", foreignKey: "followerId", otherKey: "followingId" });
+Follow.belongsTo(User, { as: "follower", foreignKey: "followerId" });
+Follow.belongsTo(User, { as: "following", foreignKey: "followingId" });
 
 // Badges
 User.belongsToMany(Badge, { through: UserBadge, as: "badges", foreignKey: "userId" });

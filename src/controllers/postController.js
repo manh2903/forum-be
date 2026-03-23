@@ -6,10 +6,31 @@ const { sendNotification } = require("../socket");
 // GET /api/posts
 const listPosts = async (req, res, next) => {
   try {
-    const { page = 1, limit = 10, topic, tag, search, sort = "latest", status = "published", bookmarked } = req.query;
+    const { page = 1, limit = 10, topic, tag, search, sort = "latest", status = "published", bookmarked, authorId } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
-    const where = { status };
+    const where = {};
 
+    // Security & Visibility: 
+    // Admin/Mod can see everything. Authors can see all their own posts. 
+    // Others only see 'published'.
+    const isAuthor = req.user && authorId && parseInt(authorId) === req.user.id;
+    const isStaff = req.user && (req.user.role === "admin" || req.user.role === "moderator");
+    
+    if (status === "all") {
+      if (!isAuthor && !isStaff) {
+        where.status = "published";
+      }
+      // If isAuthor or isStaff, no status filter means "all"
+    } else {
+      // If a specific status is requested, check permission
+      if (status !== "published" && !isAuthor && !isStaff) {
+        where.status = "published"; // Force published for unauthorized requests
+      } else {
+        where.status = status;
+      }
+    }
+
+    if (authorId) where.authorId = authorId;
     if (topic) where.topicId = topic;
     if (search) {
       where[Op.or] = [{ title: { [Op.like]: `%${search}%` } }, { excerpt: { [Op.like]: `%${search}%` } }];

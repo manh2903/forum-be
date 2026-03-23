@@ -3,7 +3,10 @@ const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 const { authenticate, optionalAuth } = require("../middlewares/auth");
-const { getProfile, updateProfile, changePassword, followUser, unfollowUser, listUsers } = require("../controllers/userController");
+const { getProfile, updateProfile, changePassword, followUser, unfollowUser, listUsers, getFollowers, getFollowing } = require("../controllers/userController");
+
+router.get("/:id/followers", optionalAuth, getFollowers);
+router.get("/:id/following", optionalAuth, getFollowing);
 const { listPosts } = require("../controllers/postController");
 
 const storage = multer.diskStorage({
