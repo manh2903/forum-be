@@ -569,6 +569,71 @@ const updateUser = async (req, res, next) => {
   }
 };
 
+// POST /api/admin/notifications
+const sendAdminNotification = async (req, res, next) => {
+  try {
+    const { recipientId, recipientIds, type = "system", content, link = "/" } = req.body;
+    
+    let targets = [];
+    let isMass = false;
+
+    if (recipientIds && Array.isArray(recipientIds) && recipientIds.length > 0) {
+      // Gửi cho một nhóm ID
+      targets = await User.findAll({ 
+        where: { id: recipientIds, isDeleted: false },
+        attributes: ["id"]
+      });
+    } else if (recipientId) {
+      // Gửi cho 1 người cụ thể
+      targets = [{ id: recipientId }];
+    } else {
+      // Gửi cho tất cả người dùng hoạt động
+      targets = await User.findAll({ 
+        where: { isDeleted: false, isBanned: false }, 
+        attributes: ["id"] 
+      });
+      isMass = true;
+    }
+
+    if (targets.length === 0) return res.status(400).json({ message: "Không tìm thấy người nhận" });
+
+    const notifs = targets.map(u => ({
+      recipientId: u.id,
+      senderId: req.user.id,
+      type,
+      content,
+      link,
+    }));
+
+    // Chia nhỏ bulkCreate nếu số lượng quá lớn (ví dụ > 5000), nhưng hiện tại database thông thường chịu được hàng nghìn
+    await Notification.bulkCreate(notifs);
+
+    // Gửi thông báo realtime (Cả qua Socket và FCM)
+    targets.forEach(u => {
+      sendNotification(u.id, { 
+        senderId: req.user.id, 
+        type, 
+        content, 
+        link,
+        sender: { id: req.user.id, username: req.user.username, avatar: req.user.avatar }
+      });
+    });
+
+    // Audit Log
+    await AuditLog.create({
+      userId: req.user.id,
+      action: isMass ? "send_mass_notification" : "send_group_notification",
+      targetType: isMass ? "all_users" : "specific_users",
+      details: { content, link, recipientCount: targets.length },
+      ipAddress: req.ip,
+    });
+
+    res.json({ message: `Đã gửi thông báo thành công cho ${targets.length} người dùng` });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = { 
   getUsers, 
   banUser, 
@@ -586,5 +651,6 @@ module.exports = {
   getAuditAnalytics,
   approvePost,
   rejectPost,
-  restorePost
+  restorePost,
+  sendAdminNotification
 };

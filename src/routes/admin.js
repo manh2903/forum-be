@@ -19,6 +19,7 @@ const {
   approvePost,
   rejectPost,
   restorePost,
+  sendAdminNotification,
 } = require("../controllers/adminController");
 const { getReports, resolveReport } = require("../controllers/reportController");
 
@@ -44,5 +45,6 @@ router.put("/reports/:id", ...isAdmin, resolveReport);
 router.get("/analytics", ...isAdmin, getAnalytics);
 router.get("/audit-logs", ...isAdminOnly, getAuditLogs);
 router.get("/audit-analytics", ...isAdminOnly, getAuditAnalytics);
+router.post("/notifications", ...isAdmin, sendAdminNotification);
 
 module.exports = router;
