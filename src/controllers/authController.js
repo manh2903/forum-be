@@ -1,10 +1,20 @@
 const jwt = require("jsonwebtoken");
 const { Op } = require("sequelize");
 const passport = require("passport");
-const { User } = require("../models");
+const { User, Setting } = require("../models");
 const { generateTokens } = require("../middlewares/auth");
 const { sendOTP } = require("../utils/email");
 const crypto = require("crypto");
+
+// Helper: Get OTP expiration minutes from settings
+const getOTPExpires = async () => {
+  const setting = await Setting.findOne({ where: { key: "otp_expires_minutes" } });
+  const minutes = setting ? parseInt(setting.value) : 30;
+  return { 
+    expires: new Date(Date.now() + minutes * 60 * 1000),
+    minutes 
+  };
+};
 
 // POST /api/auth/register
 const register = async (req, res, next) => {
@@ -25,7 +35,7 @@ const register = async (req, res, next) => {
 
     // Generate 6-digit OTP for verification
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expires = new Date(Date.now() + 30 * 60 * 1000); // 30 mins
+    const { expires, minutes } = await getOTPExpires();
 
     const user = await User.create({ 
       username, 
@@ -41,7 +51,7 @@ const register = async (req, res, next) => {
     });
 
     if (role !== 'admin') {
-      await sendOTP(email, otp);
+      await sendOTP(email, otp, minutes);
     }
 
     res.status(201).json({
@@ -123,14 +133,14 @@ const forgotPassword = async (req, res, next) => {
 
     // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expires = new Date(Date.now() + 30 * 60 * 1000); // 30 mins
+    const { expires, minutes } = await getOTPExpires();
 
     await user.update({
       otpCode: otp,
       otpExpires: expires,
     });
 
-    await sendOTP(email, otp);
+    await sendOTP(email, otp, minutes);
     res.json({ message: "Mã OTP đã được gửi đến email của bạn" });
   } catch (err) {
     next(err);
@@ -184,10 +194,10 @@ const resendOTP = async (req, res, next) => {
     if (!user) return res.status(404).json({ message: "User not found" });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expires = new Date(Date.now() + 30 * 60 * 1000);
+    const { expires, minutes } = await getOTPExpires();
 
     await user.update({ otpCode: otp, otpExpires: expires });
-    await sendOTP(email, otp);
+    await sendOTP(email, otp, minutes);
 
     res.json({ message: "Mã OTP mới đã được gửi" });
   } catch (err) {
