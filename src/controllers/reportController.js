@@ -8,10 +8,28 @@ const createReport = async (req, res, next) => {
     const { targetType, targetId, reason, description } = req.body;
 
     const existing = await Report.findOne({ where: { reporterId: req.user.id, targetType, targetId } });
-    if (existing) return res.status(409).json({ message: "You already reported this content" });
+    if (existing) return res.status(409).json({ message: "Bạn đã báo cáo nội dung này" });
 
-    const report = await Report.create({ reporterId: req.user.id, targetType, targetId, reason, description });
-    res.status(201).json({ report, message: "Report submitted successfully" });
+    // Validate target and get ownerId
+    let targetOwnerId = null;
+    if (targetType === 'post') {
+      const post = await Post.findByPk(targetId);
+      if (!post) return res.status(404).json({ message: "Bài viết không tồn tại" });
+      targetOwnerId = post.authorId;
+    } else if (targetType === 'comment') {
+      const comment = await Comment.findByPk(targetId);
+      if (!comment) return res.status(404).json({ message: "Bình luận không tồn tại" });
+      targetOwnerId = comment.authorId;
+    } else if (targetType === 'user') {
+      const user = await User.findByPk(targetId);
+      if (!user) return res.status(404).json({ message: "Người dùng không tồn tại" });
+      targetOwnerId = user.id;
+    }
+
+    const report = await Report.create({ 
+      reporterId: req.user.id, targetType, targetId, targetOwnerId, reason, description 
+    });
+    res.status(201).json({ report, message: "Báo cáo thành công" });
   } catch (err) {
     next(err);
   }
@@ -20,20 +38,46 @@ const createReport = async (req, res, next) => {
 // GET /api/admin/reports
 const getReports = async (req, res, next) => {
   try {
-    const { status = "pending", page = 1, limit = 20 } = req.query;
+    const { status = "all", page = 1, limit = 15 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    const { count, rows } = await Report.findAndCountAll({
-      where: status !== "all" ? { status } : {},
+    const where = { isDeleted: false };
+    if (status && status !== "all") {
+      where.status = status;
+    }
+
+    const { count, rows } = await Report.unscoped().findAndCountAll({
+      where,
       include: [
-        { model: User, as: "reporter", attributes: ["id", "username", "avatar"] },
-        { model: User, as: "resolver", attributes: ["id", "username"] },
+        { model: User.unscoped(), as: "reporter", attributes: ["id", "username", "avatar"], required: false },
+        { model: User.unscoped(), as: "resolver", attributes: ["id", "username"], required: false },
+        { model: User.unscoped(), as: "targetOwner", attributes: ["id", "username", "avatar"], required: false },
       ],
       order: [["createdAt", "DESC"]],
       limit: parseInt(limit),
       offset,
     });
-    res.json({ reports: rows, total: count, page: parseInt(page), totalPages: Math.ceil(count / parseInt(limit)) });
+
+    // Enrich with target content
+    const enrichedReports = await Promise.all(rows.map(async (report) => {
+      const plainReport = report.get({ plain: true });
+      let target = null;
+      try {
+        if (report.targetType === 'post') {
+          target = await Post.unscoped().findByPk(report.targetId, { attributes: ['id', 'title', 'slug', 'isDeleted'] });
+        } else if (report.targetType === 'comment') {
+          target = await Comment.unscoped().findByPk(report.targetId, { 
+            include: [{ model: User.unscoped(), as: 'author', attributes: ['username'] }],
+            attributes: ['id', 'content', 'isDeleted']
+          });
+        } else if (report.targetType === 'user') {
+          target = await User.unscoped().findByPk(report.targetId, { attributes: ['id', 'username', 'avatar', 'isDeleted'] });
+        }
+      } catch (err) {}
+      return { ...plainReport, target };
+    }));
+
+    res.json({ reports: enrichedReports, total: count, page: parseInt(page), totalPages: Math.ceil(count / parseInt(limit)) });
   } catch (err) {
     next(err);
   }

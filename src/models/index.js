@@ -82,6 +82,7 @@ User.hasMany(Notification, { foreignKey: "recipientId", as: "notifications" });
 // =====================
 Report.belongsTo(User, { foreignKey: "reporterId", as: "reporter" });
 Report.belongsTo(User, { foreignKey: "resolvedById", as: "resolver" });
+Report.belongsTo(User, { foreignKey: "targetOwnerId", as: "targetOwner" });
 
 // AuditLog Associations
 // =====================

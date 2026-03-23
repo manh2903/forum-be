@@ -8,6 +8,7 @@ const Report = sequelize.define(
     reporterId: { type: DataTypes.INTEGER, allowNull: false },
     targetType: { type: DataTypes.ENUM("post", "comment", "user"), allowNull: false },
     targetId: { type: DataTypes.INTEGER, allowNull: false },
+    targetOwnerId: { type: DataTypes.INTEGER, allowNull: true },
     reason: {
       type: DataTypes.ENUM("spam", "harassment", "misinformation", "inappropriate", "copyright", "other"),
       allowNull: false,

@@ -169,7 +169,23 @@ const getFollowers = async (req, res, next) => {
       where: { followingId: req.params.id },
       include: [{ model: User, as: "follower", attributes: ["id", "username", "fullName", "avatar", "reputation", "role"] }],
     });
-    res.json({ users: followers.map((f) => f.follower) });
+
+    const userList = followers.map((f) => f.follower);
+    let follows = new Set();
+    if (req.user && userList.length > 0) {
+      const followData = await Follow.findAll({
+        where: { followerId: req.user.id, followingId: userList.map((u) => u.id) },
+        attributes: ["followingId"],
+      });
+      follows = new Set(followData.map((f) => f.followingId));
+    }
+
+    const result = userList.map((u) => ({
+      ...u.toJSON(),
+      isFollowing: follows.has(u.id),
+    }));
+
+    res.json({ users: result });
   } catch (err) {
     next(err);
   }
@@ -182,7 +198,23 @@ const getFollowing = async (req, res, next) => {
       where: { followerId: req.params.id },
       include: [{ model: User, as: "following", attributes: ["id", "username", "fullName", "avatar", "reputation", "role"] }],
     });
-    res.json({ users: following.map((f) => f.following) });
+
+    const userList = following.map((f) => f.following);
+    let follows = new Set();
+    if (req.user && userList.length > 0) {
+      const followData = await Follow.findAll({
+        where: { followerId: req.user.id, followingId: userList.map((u) => u.id) },
+        attributes: ["followingId"],
+      });
+      follows = new Set(followData.map((f) => f.followingId));
+    }
+
+    const result = userList.map((u) => ({
+      ...u.toJSON(),
+      isFollowing: follows.has(u.id),
+    }));
+
+    res.json({ users: result });
   } catch (err) {
     next(err);
   }
