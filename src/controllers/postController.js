@@ -124,10 +124,6 @@ const getPost = async (req, res, next) => {
       if (!req.user || (req.user.id !== post.authorId && req.user.role === "user")) {
         return res.status(404).json({ message: "Post not found" });
       }
-    } else {
-      // Increment view count
-      await post.increment("viewCount");
-      post.viewCount += 1;
     }
 
     let isLiked = false,
@@ -342,6 +338,24 @@ const bookmarkPost = async (req, res, next) => {
   }
 };
 
+// POST /api/posts/:id/view
+const incrementView = async (req, res, next) => {
+  try {
+    const post = await Post.findByPk(req.params.id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+    
+    // Chỉ tăng view cho bài viết đã publish và không bị xóa
+    if (post.status === "published" && !post.isDeleted) {
+      await post.increment("viewCount");
+      return res.json({ success: true, viewCount: post.viewCount + 1 });
+    }
+    
+    res.json({ success: false, message: "Không thể tăng view cho bài viết này" });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // Helper: generate unique slug
 async function generateUniqueSlug(title, excludeId = null) {
   let slug = slugify(title);
@@ -380,4 +394,13 @@ async function handleTags(postId, tagNames, transaction = null) {
   )));
 }
 
-module.exports = { listPosts, getPost, createPost, updatePost, deletePost, likePost, bookmarkPost };
+module.exports = { 
+  listPosts, 
+  getPost, 
+  createPost, 
+  updatePost, 
+  deletePost, 
+  likePost, 
+  bookmarkPost,
+  incrementView 
+};
