@@ -28,6 +28,7 @@ const Notification = sequelize.define(
     isRead: { type: DataTypes.BOOLEAN, defaultValue: false },
     isEmailSent: { type: DataTypes.BOOLEAN, defaultValue: false },
     link: { type: DataTypes.STRING(500) },
+    slug: { type: DataTypes.STRING(255) },
     isDeleted: { type: DataTypes.BOOLEAN, defaultValue: false },
   },
   {

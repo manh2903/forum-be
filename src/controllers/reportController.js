@@ -52,7 +52,7 @@ const resolveReport = async (req, res, next) => {
       recipientId: report.reporterId,
       senderId: req.user.id,
       type: "report_resolved",
-      content: `Your report has been ${status}: ${resolution || ""}`,
+      content: `Báo cáo của bạn đã được ${status === 'resolved' ? 'xử lý' : 'bỏ qua'}: ${resolution || ""}`,
       entityType: "report",
       entityId: report.id,
     });

@@ -39,6 +39,7 @@ const getComments = async (req, res, next) => {
       limit: parseInt(limit),
       offset,
       distinct: true,
+      subQuery: false,
     });
 
     let likedIds = new Set();
@@ -56,15 +57,19 @@ const getComments = async (req, res, next) => {
       likedIds = new Set(likes.map((l) => l.commentId));
     }
 
-    const addIsLiked = (comments) =>
-      comments.map((c) => ({
-        ...c.toJSON(),
-        isLiked: likedIds.has(c.id),
-        replies: c.replies ? addIsLiked(c.replies) : [],
-      }));
+    const processComments = (comments) => {
+      return comments.map((c) => {
+        const plainComment = typeof c.toJSON === "function" ? c.toJSON() : c;
+        return {
+          ...plainComment,
+          isLiked: likedIds.has(plainComment.id),
+          replies: plainComment.replies ? processComments(plainComment.replies) : [],
+        };
+      });
+    };
 
     res.json({
-      comments: addIsLiked(topLevelComments.rows),
+      comments: processComments(topLevelComments.rows),
       total: topLevelComments.count,
       page: parseInt(page),
       totalPages: Math.ceil(topLevelComments.count / parseInt(limit)),
@@ -109,8 +114,9 @@ const createComment = async (req, res, next) => {
           type: parentId ? "comment" : "comment",
           entityType: "comment",
           entityId: comment.id,
-          content: `${req.user.username} commented on your post "${post.title}"`,
+          content: `${req.user.username} đã bình luận bài viết "${post.title}" của bạn`,
           link: `/posts/${post.slug}#comment-${comment.id}`,
+          slug: post.slug,
         }),
       );
     }
@@ -126,8 +132,9 @@ const createComment = async (req, res, next) => {
             type: "reply",
             entityType: "comment",
             entityId: comment.id,
-            content: `${req.user.username} replied to your comment`,
+            content: `${req.user.username} đã phản hồi bình luận của bạn`,
             link: `/posts/${post.slug}#comment-${comment.id}`,
+            slug: post.slug,
           }),
         );
       }
@@ -145,8 +152,9 @@ const createComment = async (req, res, next) => {
             type: "mention",
             entityType: "comment",
             entityId: comment.id,
-            content: `${req.user.username} mentioned you in a comment`,
+            content: `${req.user.username} đã nhắc đến bạn trong một bình luận`,
             link: `/posts/${post.slug}#comment-${comment.id}`,
+            slug: post.slug,
           }),
         );
       }
@@ -208,13 +216,17 @@ const likeComment = async (req, res, next) => {
       // Reputation: +1 khi comment được like
       await User.increment("reputation", { by: 1, where: { id: comment.authorId } });
       if (comment.authorId !== req.user.id) {
+        // Need post slug for notification
+        const post = await Post.findByPk(comment.postId, { attributes: ['slug'] });
         const notif = await Notification.create({
           recipientId: comment.authorId,
           senderId: req.user.id,
           type: "like_comment",
           entityType: "comment",
           entityId: comment.id,
-          content: `${req.user.username} liked your comment`,
+          content: `${req.user.username} đã thích bình luận của bạn`,
+          link: `/posts/${post?.slug || 'detail'}#comment-${comment.id}`,
+          slug: post?.slug,
         });
         sendNotification(comment.authorId, notif);
       }

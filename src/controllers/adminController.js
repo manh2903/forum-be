@@ -398,6 +398,7 @@ const approvePost = async (req, res, next) => {
       type: "system",
       content: `Bài viết "${post.title}" của bạn đã được phê duyệt!`,
       link: `/posts/${post.slug}`,
+      slug: post.slug,
     });
     sendNotification(post.authorId, notif);
 
@@ -431,6 +432,7 @@ const rejectPost = async (req, res, next) => {
       type: "system",
       content: `Bài viết "${post.title}" của bạn bị từ chối phê duyệt${reason ? `: ${reason}` : ""}.`,
       link: `/posts/edit/${post.id}`,
+      slug: post.slug,
     });
     sendNotification(post.authorId, notif);
 

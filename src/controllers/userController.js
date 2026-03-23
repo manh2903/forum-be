@@ -103,8 +103,9 @@ const followUser = async (req, res, next) => {
       recipientId: targetId,
       senderId: req.user.id,
       type: "follow",
-      content: `${req.user.username} started following you`,
+      content: `${req.user.username} đã bắt đầu theo dõi bạn`,
       link: `/profile/${req.user.username}`,
+      slug: req.user.username,
     });
     sendNotification(targetId, { ...notif.toJSON(), sender: { id: req.user.id, username: req.user.username, avatar: req.user.avatar } });
 

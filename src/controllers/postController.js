@@ -277,8 +277,9 @@ const likePost = async (req, res, next) => {
           type: "like_post",
           entityType: "post",
           entityId: post.id,
-          content: `${req.user.username} liked your post "${post.title}"`,
+          content: `${req.user.username} đã thích bài viết của bạn "${post.title}"`,
           link: `/posts/${post.slug}`,
+          slug: post.slug,
         });
         sendNotification(post.authorId, notif);
       }
