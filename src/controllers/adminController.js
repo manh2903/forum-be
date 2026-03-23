@@ -364,23 +364,23 @@ const getAuditAnalytics = async (req, res, next) => {
       AuditLog.count({ where: { status: { [Op.gte]: 400 } } }),
       AuditLog.findAll({
         attributes: [
-          [col("userId"), "userId"],
-          [fn("COUNT", col("id")), "count"],
+          [col("AuditLog.userId"), "userId"],
+          [fn("COUNT", col("AuditLog.id")), "count"],
         ],
         include: [{ model: User, as: "user", attributes: ["username", "avatar"] }],
-        group: ["userId", "user.id"],
-        order: [[fn("COUNT", col("id")), "DESC"]],
+        group: ["AuditLog.userId", "user.id"],
+        order: [[fn("COUNT", col("AuditLog.id")), "DESC"]],
         limit: 5,
       }),
       AuditLog.findAll({
         where: { createdAt: { [Op.gte]: thirtyDaysAgo } },
         attributes: [
-          [fn("DATE", col("createdAt")), "date"],
-          [fn("COUNT", col("id")), "count"],
+          [fn("DATE", col("AuditLog.createdAt")), "date"],
+          [fn("COUNT", col("AuditLog.id")), "count"],
           [fn("SUM", literal("CASE WHEN status >= 400 THEN 1 ELSE 0 END")), "errors"]
         ],
-        group: [fn("DATE", col("createdAt"))],
-        order: [[fn("DATE", col("createdAt")), "ASC"]],
+        group: [fn("DATE", col("AuditLog.createdAt"))],
+        order: [[fn("DATE", col("AuditLog.createdAt")), "ASC"]],
         raw: true
       })
     ]);
