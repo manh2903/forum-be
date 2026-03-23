@@ -1,6 +1,6 @@
 const { fn, col, literal, Op } = require("sequelize");
 const { sequelize } = require("../config/database");
-const { User, Post, Comment, Report, AuditLog, Tag, Notification } = require("../models");
+const { User, Post, Comment, Report, AuditLog, Tag, Notification, SearchHistory } = require("../models");
 const { sendNotification } = require("../socket");
 const { updateFeaturedPosts } = require("../utils/featuredJob");
 
@@ -294,18 +294,18 @@ const getAnalytics = async (req, res, next) => {
       subQuery: false
     });
 
-    // Role Distribution
-    const roleDistribution = await User.findAll({
-      attributes: ["role", [fn("COUNT", col("id")), "count"]],
-      group: ["role"],
+    // Top Searches
+    const topSearches = await SearchHistory.findAll({
+      attributes: [
+        "query",
+        [fn("COUNT", col("query")), "count"],
+        [fn("MAX", col("createdAt")), "latest"]
+      ],
+      group: ["query"],
+      order: [[fn("COUNT", col("query")), "DESC"]],
+      limit: 10,
       raw: true
     });
-
-    // Report Summary
-    const [resolvedReports, totalReports] = await Promise.all([
-      Report.count({ where: { status: { [Op.ne]: "pending" } } }),
-      Report.count()
-    ]);
 
     // Latest Audit Logs (Last 5)
     const latestAuditLogs = await AuditLog.findAll({
@@ -316,15 +316,18 @@ const getAnalytics = async (req, res, next) => {
 
     res.json({
       overview: { 
-        userCount, postCount, commentCount, 
-        pendingReports: reportCount, totalReports, resolvedReports,
-        newUsersWeek: newUsers, newPostsWeek: newPosts 
+        userCount,
+        postCount,
+        commentCount,
+        pendingReports: reportCount,
+        newUsersWeek: newUsers,
+        newPostsWeek: newPosts,
+        resolvedReports: await Report.count({ where: { status: "resolved" } })
       },
       topPosts,
       topUsers,
       topTags,
-      roleDistribution,
-      latestAuditLogs,
+      topSearches,
       charts: { userGrowth, postGrowth },
     });
   } catch (err) {

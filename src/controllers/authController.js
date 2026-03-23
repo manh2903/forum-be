@@ -73,11 +73,11 @@ const login = async (req, res, next) => {
       },
     });
     if (!user || !user.password) return res.status(401).json({ message: "Thông tin đăng nhập không chính xác" });
-    if (user.isBanned) return res.status(403).json({ message: "Account banned", reason: user.banReason });
+    if (user.isBanned) return res.status(403).json({ message: "Tài khoản đã bị khóa", reason: user.banReason });
     if (!user.isVerified) return res.status(403).json({ message: "Tài khoản chưa được xác thực. Vui lòng kiểm tra email để lấy mã OTP.", email: user.email });
 
     const valid = await user.comparePassword(password);
-    if (!valid) return res.status(401).json({ message: "Invalid credentials" });
+    if (!valid) return res.status(401).json({ message: "Thông tin đăng nhập không chính xác" });
 
     await user.update({ lastLogin: new Date() });
     const { accessToken, refreshToken } = generateTokens(user);

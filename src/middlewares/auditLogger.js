@@ -35,7 +35,7 @@ const sanitizeData = (data) => {
 const auditLogger = async (req, res, next) => {
   // Bỏ qua GET requests từ các route admin để tránh đầy DB vì fetch dữ liệu liên tục
   // (Các phương thức POST, PUT, DELETE thay đổi dữ liệu vẫn được log bình thường)
-  if (req.method === "GET" && req.originalUrl.includes("/api/admin")) {
+  if (req.method === "GET" && req.originalUrl.includes("admin")) {
     return next();
   }
 
