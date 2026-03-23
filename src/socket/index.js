@@ -31,19 +31,34 @@ function initSocket(server) {
 
   io.on("connection", (socket) => {
     const userId = socket.user.id;
-    onlineUsers.set(userId, socket.id);
-    logger.info(`User ${userId} connected`);
+    
+    if (!onlineUsers.has(userId)) {
+      onlineUsers.set(userId, new Set());
+      io.emit("user_online", { userId });
+      io.emit("presence_update", { onlineCount: onlineUsers.size });
+    }
+    onlineUsers.get(userId).add(socket.id);
+
+    logger.info(`User ${userId} connected. Total sockets: ${onlineUsers.get(userId).size}`);
 
     socket.join(`user_${userId}`);
 
-    // Broadcast online status
-    io.emit("user_online", { userId });
-
     socket.on("disconnect", () => {
-      onlineUsers.delete(userId);
-      io.emit("user_offline", { userId });
-      logger.info(`User ${userId} disconnected`);
+      const userSockets = onlineUsers.get(userId);
+      if (userSockets) {
+        userSockets.delete(socket.id);
+        if (userSockets.size === 0) {
+          onlineUsers.delete(userId);
+          io.emit("user_offline", { userId });
+          io.emit("presence_update", { onlineCount: onlineUsers.size });
+          logger.info(`User ${userId} fully disconnected`);
+        } else {
+          logger.info(`User ${userId} closed 1 tab. Remaining: ${userSockets.size}`);
+        }
+      }
     });
+
+    socket.emit("presence_update", { onlineCount: onlineUsers.size });
 
     socket.on("join_post", (postId) => {
       socket.join(`post_${postId}`);

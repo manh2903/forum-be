@@ -1,7 +1,7 @@
 const { fn, col, literal, Op } = require("sequelize");
 const { sequelize } = require("../config/database");
 const { User, Post, Comment, Report, AuditLog, Tag, Topic, Notification, SearchHistory } = require("../models");
-const { sendNotification } = require("../socket");
+const { sendNotification, onlineUsers } = require("../socket");
 const { updateFeaturedPosts } = require("../utils/featuredJob");
 
 // GET /api/admin/users
@@ -347,7 +347,9 @@ const getAnalytics = async (req, res, next) => {
         newUsersWeek: newUsers,
         newPostsWeek: newPosts,
         resolvedReports: await Report.count({ where: { status: "resolved" } }),
-        engagementRate: engagementRate.toFixed(1)
+        engagementRate: engagementRate.toFixed(1),
+        onlineCount: onlineUsers.size,
+        offlineCount: Math.max(0, userCount - onlineUsers.size)
       },
       engagementByTopic,
       topPosts,
