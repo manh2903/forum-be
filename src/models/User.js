@@ -32,6 +32,7 @@ const User = sequelize.define(
     resetPasswordExpires: { type: DataTypes.DATE, defaultValue: null },
     otpCode: { type: DataTypes.STRING(6), defaultValue: null },
     otpExpires: { type: DataTypes.DATE, defaultValue: null },
+    fcmToken: { type: DataTypes.STRING(500), defaultValue: null },
     isDeleted: { type: DataTypes.BOOLEAN, defaultValue: false },
   },
   {

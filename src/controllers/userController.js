@@ -220,4 +220,19 @@ const getFollowing = async (req, res, next) => {
   }
 };
 
-module.exports = { getProfile, updateProfile, changePassword, followUser, unfollowUser, listUsers, getFollowers, getFollowing };
+// PUT /api/users/me/fcm-token
+const updateFCMToken = async (req, res, next) => {
+  try {
+    const { token } = req.body;
+    await req.user.update({ fcmToken: token || null });
+    res.json({ message: "FCM Token updated" });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { 
+  getProfile, updateProfile, changePassword, followUser, 
+  unfollowUser, listUsers, getFollowers, getFollowing,
+  updateFCMToken
+};

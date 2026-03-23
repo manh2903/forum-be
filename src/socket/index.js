@@ -2,6 +2,7 @@ const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 const { User } = require("../models");
 const logger = require("../utils/logger");
+const { sendFCMNotification } = require("../config/firebase");
 
 let io;
 const onlineUsers = new Map();
@@ -77,9 +78,25 @@ function getIO() {
   return io;
 }
 
-function sendNotification(userId, notification) {
+async function sendNotification(userId, notification) {
   if (io) {
     io.to(`user_${userId}`).emit("notification", notification);
+  }
+
+  try {
+    const user = await User.findByPk(userId, { attributes: ["id", "fcmToken"] });
+    if (user && user.fcmToken) {
+      await sendFCMNotification(user.fcmToken, {
+        title: "Thông báo mới",
+        body: notification.content || "Bạn có thông báo mới",
+        data: {
+          link: notification.link || "",
+          id: String(notification.id || ""),
+        },
+      });
+    }
+  } catch (error) {
+    logger.error("Error sending FCM in sendNotification:", error);
   }
 }
 

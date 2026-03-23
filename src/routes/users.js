@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 const { authenticate, optionalAuth } = require("../middlewares/auth");
-const { getProfile, updateProfile, changePassword, followUser, unfollowUser, listUsers, getFollowers, getFollowing } = require("../controllers/userController");
+const { getProfile, updateProfile, changePassword, followUser, unfollowUser, listUsers, getFollowers, getFollowing, updateFCMToken } = require("../controllers/userController");
 
 router.get("/:id/followers", optionalAuth, getFollowers);
 router.get("/:id/following", optionalAuth, getFollowing);
@@ -31,6 +31,7 @@ router.get(
 );
 router.put("/me", authenticate, upload.single("avatar"), updateProfile);
 router.put("/me/password", authenticate, changePassword);
+router.put("/me/fcm-token", authenticate, updateFCMToken);
 router.post("/:id/follow", authenticate, followUser);
 router.delete("/:id/follow", authenticate, unfollowUser);
 
