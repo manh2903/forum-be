@@ -68,10 +68,24 @@ const auditLogger = async (req, res, next) => {
         error = sanitizeData(responseBody);
       }
 
+      let action = `${req.method} ${req.originalUrl.split("?")[0]}`;
+      let finalUserId = userId;
+
+      // Special handling for auth actions to make them readable
+      if (req.originalUrl.includes("/api/auth/login") && status === 200 && responseBody?.user) {
+        action = "User Login";
+        finalUserId = responseBody.user.id;
+      } else if (req.originalUrl.includes("/api/auth/register") && status === 201 && responseBody?.user) {
+        action = "User Registration";
+        finalUserId = responseBody.user.id;
+      } else if (req.originalUrl.includes("/api/auth/logout") && status === 200) {
+        action = "User Logout";
+      }
+
       // Tạo logRecord
       await AuditLog.create({
-        userId,
-        action: `${req.method} ${req.originalUrl.split("?")[0]}`,
+        userId: finalUserId,
+        action,
         method: req.method,
         endpoint: req.originalUrl,
         requestBody: sanitizeData(req.body),

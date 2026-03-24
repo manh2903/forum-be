@@ -3,7 +3,7 @@ const router = express.Router();
 const passport = require("passport");
 const { 
   register, login, refresh, getMe, googleCallback, githubCallback,
-  forgotPassword, verifyOTP, resetPassword, resendOTP, verifyEmail
+  forgotPassword, verifyOTP, resetPassword, resendOTP, verifyEmail, logout
 } = require("../controllers/authController");
 const { authenticate } = require("../middlewares/auth");
 
@@ -11,6 +11,7 @@ router.post("/register", register);
 router.post("/login", login);
 router.post("/refresh", refresh);
 router.get("/me", authenticate, getMe);
+router.post("/logout", authenticate, logout);
 
 router.post("/forgot-password", forgotPassword);
 router.post("/verify-otp", verifyOTP);

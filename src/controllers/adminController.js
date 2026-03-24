@@ -366,10 +366,11 @@ const getAnalytics = async (req, res, next) => {
 // GET /api/admin/audit-logs
 const getAuditLogs = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20, action } = req.query;
+    const { page = 1, limit = 20, action, userId } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const where = {};
     if (action) where.action = action;
+    if (userId) where.userId = userId;
 
     const { count, rows } = await AuditLog.findAndCountAll({
       where,

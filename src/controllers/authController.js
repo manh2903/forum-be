@@ -228,6 +228,10 @@ const verifyEmail = async (req, res, next) => {
   }
 };
 
+const logout = async (req, res) => {
+  res.json({ message: "Đã đăng xuất" });
+};
+
 module.exports = { 
   register, 
   login, 
@@ -239,5 +243,6 @@ module.exports = {
   verifyOTP,
   resetPassword,
   resendOTP,
-  verifyEmail
+  verifyEmail,
+  logout
 };
