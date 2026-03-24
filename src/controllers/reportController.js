@@ -141,4 +141,45 @@ const resolveReport = async (req, res, next) => {
   }
 };
 
-module.exports = { createReport, getReports, resolveReport };
+// GET /api/reports
+const getMyReports = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 15 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const { count, rows } = await Report.findAndCountAll({
+      where: { reporterId: req.user.id, isDeleted: false },
+      include: [
+        { model: User.unscoped(), as: "resolver", attributes: ["id", "username"], required: false },
+        { model: User.unscoped(), as: "targetOwner", attributes: ["id", "username", "avatar"], required: false },
+      ],
+      order: [["createdAt", "DESC"]],
+      limit: parseInt(limit),
+      offset,
+    });
+
+    const enrichedReports = await Promise.all(rows.map(async (report) => {
+      const plainReport = report.get({ plain: true });
+      let target = null;
+      try {
+        if (report.targetType === 'post') {
+          target = await Post.unscoped().findByPk(report.targetId, { attributes: ['id', 'title', 'slug', 'isDeleted'] });
+        } else if (report.targetType === 'comment') {
+          target = await Comment.unscoped().findByPk(report.targetId, { 
+            include: [{ model: User.unscoped(), as: 'author', attributes: ['username'] }],
+            attributes: ['id', 'content', 'isDeleted']
+          });
+        } else if (report.targetType === 'user') {
+          target = await User.unscoped().findByPk(report.targetId, { attributes: ['id', 'username', 'avatar', 'isDeleted'] });
+        }
+      } catch (err) {}
+      return { ...plainReport, target };
+    }));
+
+    res.json({ reports: enrichedReports, total: count, page: parseInt(page), totalPages: Math.ceil(count / parseInt(limit)) });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { createReport, getReports, resolveReport, getMyReports };
