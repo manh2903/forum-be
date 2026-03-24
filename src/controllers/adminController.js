@@ -150,7 +150,7 @@ const getPostsAdmin = async (req, res, next) => {
       distinct: true,
       include: [
         { model: User, as: "author", attributes: ["id", "username", "avatar"] },
-        { model: Tag, as: "tags", through: { attributes: [] } },
+        { model: Tag, as: "tags", through: { attributes: [] }, required: false },
       ],
       limit: parseInt(limit),
       offset,

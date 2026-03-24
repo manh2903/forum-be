@@ -1,6 +1,6 @@
 const { Report, User, Post, Comment, Notification, AuditLog } = require("../models");
 const { sequelize } = require("../config/database");
-const { sendNotification } = require("../socket");
+const { sendNotification, getIO } = require("../socket");
 
 // POST /api/reports
 const createReport = async (req, res, next) => {
@@ -29,6 +29,26 @@ const createReport = async (req, res, next) => {
     const report = await Report.create({ 
       reporterId: req.user.id, targetType, targetId, targetOwnerId, reason, description 
     });
+
+    // Notify admins
+    const admins = await User.findAll({ where: { role: ["admin", "moderator"] }, attributes: ["id"] });
+    const notifData = admins.map(admin => ({
+      recipientId: admin.id,
+      senderId: req.user.id,
+      type: "new_report",
+      entityType: "report",
+      entityId: report.id,
+      content: `Báo cáo mới về bài viết/bình luận cần được xử lý: "${reason}"`,
+      link: `/admin/reports`,
+    }));
+    const createdNotifs = await Notification.bulkCreate(notifData);
+    
+    createdNotifs.forEach(notif => {
+      sendNotification(notif.recipientId, notif);
+    });
+
+    getIO().to("staff").emit("new_report", { report });
+
     res.status(201).json({ report, message: "Báo cáo thành công" });
   } catch (err) {
     next(err);

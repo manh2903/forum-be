@@ -3,6 +3,7 @@ const { Op } = require("sequelize");
 const passport = require("passport");
 const { User, Setting } = require("../models");
 const { generateTokens } = require("../middlewares/auth");
+const { getIO } = require("../socket");
 const { sendOTP } = require("../utils/email");
 const crypto = require("crypto");
 
@@ -53,6 +54,9 @@ const register = async (req, res, next) => {
     if (role !== 'admin') {
       await sendOTP(email, otp, minutes);
     }
+
+    // Notify admins via socket
+    getIO().to("staff").emit("new_user", { user: user.toPublicJSON() });
 
     res.status(201).json({
       message: role === 'admin' ? "Registration successful" : "Mã OTP đã được gửi đến email để xác thực tài khoản",

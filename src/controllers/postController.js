@@ -2,7 +2,7 @@ const { Op, literal } = require("sequelize");
 const { sequelize } = require("../config/database");
 const slugify = require("../utils/slugify");
 const { Post, PostLike, Bookmark, PostTag, Tag, User, Topic, Comment, Notification } = require("../models");
-const { sendNotification } = require("../socket");
+const { sendNotification, getIO } = require("../socket");
 
 // GET /api/posts
 const listPosts = async (req, res, next) => {
@@ -39,7 +39,7 @@ const listPosts = async (req, res, next) => {
 
     const include = [
       { model: User, as: "author", attributes: ["id", "username", "avatar", "reputation", "role"] },
-      { model: Topic, as: "topic", attributes: ["id", "name", "slug"] },
+      { model: Topic, as: "topic", attributes: ["id", "name", "slug"], required: false },
       {
         model: Tag,
         as: "tags",
@@ -113,8 +113,8 @@ const getPost = async (req, res, next) => {
       where: whereClause,
       include: [
         { model: User, as: "author", attributes: ["id", "username", "avatar", "bio", "reputation", "role"] },
-        { model: Topic, as: "topic", attributes: ["id", "name", "slug"] },
-        { model: Tag, as: "tags", attributes: ["id", "name", "slug", "color"], through: { attributes: [] } },
+        { model: Topic, as: "topic", attributes: ["id", "name", "slug"], required: false },
+        { model: Tag, as: "tags", attributes: ["id", "name", "slug", "color"], through: { attributes: [] }, required: false },
       ],
     });
     if (!post) return res.status(404).json({ message: "Post not found" });
@@ -182,7 +182,7 @@ const createPost = async (req, res, next) => {
         await User.increment("reputation", { by: 5, where: { id: req.user.id }, transaction: t });
       }
 
-      return await Post.findByPk(post.id, {
+      const refreshedPost = await Post.findByPk(post.id, {
         include: [
           { model: User, as: "author", attributes: ["id", "username", "avatar"] },
           { model: Tag, as: "tags", attributes: ["id", "name", "slug", "color"], through: { attributes: [] } },
@@ -190,7 +190,27 @@ const createPost = async (req, res, next) => {
         ],
         transaction: t
       });
+      return refreshedPost || post;
     });
+
+    if (finalStatus === "pending" && fullPost) {
+      const admins = await User.findAll({ where: { role: ["admin", "moderator"] }, attributes: ["id"] });
+      const notifData = admins.map(admin => ({
+        recipientId: admin.id,
+        senderId: req.user.id,
+        type: "pending_post",
+        entityType: "post",
+        entityId: fullPost.id,
+        content: `Người dùng ${req.user.username} đã tạo bài viết mới cần duyệt: "${fullPost.title}"`,
+        link: `/admin/posts`,
+      }));
+      const createdNotifs = await Notification.bulkCreate(notifData);
+      
+      createdNotifs.forEach(notif => {
+        sendNotification(notif.recipientId, notif);
+      });
+      getIO().to("staff").emit("new_pending_post", { post: fullPost });
+    }
 
     res.status(201).json({ post: fullPost });
   } catch (err) {
@@ -225,7 +245,7 @@ const updatePost = async (req, res, next) => {
       await post.update(updateData, { transaction: t });
       if (tags) await handleTags(post.id, tags, t);
 
-      return await Post.findByPk(post.id, {
+      const refreshedPost = await Post.findByPk(post.id, {
         include: [
           { model: User, as: "author", attributes: ["id", "username", "avatar"] },
           { model: Tag, as: "tags", attributes: ["id", "name", "slug", "color"], through: { attributes: [] } },
@@ -233,6 +253,7 @@ const updatePost = async (req, res, next) => {
         ],
         transaction: t
       });
+      return refreshedPost || post;
     });
 
     res.json({ post: fullPost });

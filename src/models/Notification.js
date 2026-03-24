@@ -18,6 +18,8 @@ const Notification = sequelize.define(
         "post_featured",
         "badge_earned",
         "report_resolved",
+        "pending_post",
+        "new_report",
         "system",
       ),
       allowNull: false,

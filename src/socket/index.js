@@ -43,6 +43,9 @@ function initSocket(server) {
     logger.info(`User ${userId} connected. Total sockets: ${onlineUsers.get(userId).size}`);
 
     socket.join(`user_${userId}`);
+    if (socket.user.role === "admin" || socket.user.role === "moderator") {
+      socket.join("staff");
+    }
 
     socket.on("disconnect", () => {
       const userSockets = onlineUsers.get(userId);
