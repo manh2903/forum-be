@@ -21,6 +21,7 @@ const Post = sequelize.define(
     bookmarkCount: { type: DataTypes.INTEGER, defaultValue: 0 },
     readTime: { type: DataTypes.INTEGER, defaultValue: 0 },
     publishedAt: { type: DataTypes.DATE },
+    rejectionReason: { type: DataTypes.TEXT },
     isDeleted: { type: DataTypes.BOOLEAN, defaultValue: false },
   },
   {

@@ -483,14 +483,14 @@ const rejectPost = async (req, res, next) => {
     if (!post) return res.status(404).json({ message: "Post not found" });
 
     const result = await sequelize.transaction(async (t) => {
-      await post.update({ status: "rejected" }, { transaction: t });
+      await post.update({ status: "rejected", rejectionReason: reason }, { transaction: t });
 
       const notif = await Notification.create({
         recipientId: post.authorId,
         senderId: req.user.id,
         type: "system",
         content: `Bài viết "${post.title}" của bạn bị từ chối phê duyệt${reason ? `: ${reason}` : ""}.`,
-        link: `/posts/edit/${post.id}`,
+        link: `/edit/${post.slug}`,
         slug: post.slug,
       }, { transaction: t });
 
