@@ -13,6 +13,7 @@ const routes = require("./src/routes");
 const { errorHandler } = require("./src/middlewares/errorHandler");
 const logger = require("./src/utils/logger");
 const { startFeaturedJob } = require("./src/utils/featuredJob");
+const { startAutoBanJob } = require("./src/utils/autoBanJob");
 
 require("./src/config/passport");
 
@@ -59,6 +60,8 @@ async function startServer() {
 
     // Khởi động cron job cập nhật bài viết nổi bật
     startFeaturedJob();
+    // Khởi động cron job tự động khóa tài khoản vi phạm
+    startAutoBanJob();
 
     server.listen(PORT, () => {
       logger.info(`Server running on port ${PORT}`);

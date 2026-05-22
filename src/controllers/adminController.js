@@ -261,7 +261,7 @@ const getAnalytics = async (req, res, next) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const [userGrowth, postGrowth, postStats] = await Promise.all([
+    const [userGrowth, postGrowth, reportGrowth, resolvedGrowth, postStats] = await Promise.all([
       User.findAll({
         where: { createdAt: { [Op.gte]: thirtyDaysAgo } },
         attributes: [
@@ -280,6 +280,26 @@ const getAnalytics = async (req, res, next) => {
         ],
         group: [fn("DATE", col("createdAt"))],
         order: [[fn("DATE", col("createdAt")), "ASC"]],
+        raw: true,
+      }),
+      Report.findAll({
+        where: { isDeleted: false, createdAt: { [Op.gte]: thirtyDaysAgo } },
+        attributes: [
+          [fn("DATE", col("createdAt")), "date"],
+          [fn("COUNT", col("id")), "count"],
+        ],
+        group: [fn("DATE", col("createdAt"))],
+        order: [[fn("DATE", col("createdAt")), "ASC"]],
+        raw: true,
+      }),
+      Report.findAll({
+        where: { isDeleted: false, status: "resolved", resolvedAt: { [Op.gte]: thirtyDaysAgo } },
+        attributes: [
+          [fn("DATE", col("resolvedAt")), "date"],
+          [fn("COUNT", col("id")), "count"],
+        ],
+        group: [fn("DATE", col("resolvedAt"))],
+        order: [[fn("DATE", col("resolvedAt")), "ASC"]],
         raw: true,
       }),
       Post.findOne({
@@ -356,7 +376,7 @@ const getAnalytics = async (req, res, next) => {
       topUsers,
       topTags,
       topSearches,
-      charts: { userGrowth, postGrowth },
+      charts: { userGrowth, postGrowth, reportGrowth, resolvedGrowth },
     });
   } catch (err) {
     next(err);

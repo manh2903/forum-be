@@ -26,10 +26,12 @@ const register = async (req, res, next) => {
     const existingUsername = await User.findOne({ where: { username } });
     if (existingUsername) return res.status(409).json({ message: "Username đã tồn tại" });
 
-    if (studentId) {
-      const existingStudentId = await User.findOne({ where: { studentId } });
-      if (existingStudentId) return res.status(409).json({ message: "Mã sinh viên này đã được sử dụng" });
+    if (!studentId || !studentId.trim()) {
+      return res.status(400).json({ message: "Mã sinh viên là bắt buộc" });
     }
+
+    const existingStudentId = await User.findOne({ where: { studentId } });
+    if (existingStudentId) return res.status(409).json({ message: "Mã sinh viên này đã được sử dụng" });
 
     const userCount = await User.count();
     const role = userCount === 0 ? "admin" : "user";

@@ -178,7 +178,7 @@ const createPost = async (req, res, next) => {
 
       if (topicId) await Topic.increment("postCount", { where: { id: topicId }, transaction: t });
 
-      if (status === "published") {
+      if (finalStatus === "published") {
         await User.increment("reputation", { by: 5, where: { id: req.user.id }, transaction: t });
       }
 
@@ -296,9 +296,9 @@ const likePost = async (req, res, next) => {
       
       if (created) {
         await post.increment("likeCount", { transaction: t });
-        await User.increment("reputation", { by: 2, where: { id: post.authorId }, transaction: t });
         
         if (post.authorId !== req.user.id) {
+          await User.increment("reputation", { by: 2, where: { id: post.authorId }, transaction: t });
           const notif = await Notification.create({
             recipientId: post.authorId,
             senderId: req.user.id,
@@ -316,7 +316,9 @@ const likePost = async (req, res, next) => {
 
       await PostLike.destroy({ where: { userId: req.user.id, postId: post.id }, transaction: t });
       await post.decrement("likeCount", { transaction: t });
-      await User.decrement("reputation", { by: 2, where: { id: post.authorId }, transaction: t });
+      if (post.authorId !== req.user.id) {
+        await User.decrement("reputation", { by: 2, where: { id: post.authorId }, transaction: t });
+      }
       return { liked: false };
     });
 
@@ -344,12 +346,16 @@ const bookmarkPost = async (req, res, next) => {
       });
       if (created) {
         await post.increment("bookmarkCount", { transaction: t });
-        await User.increment("reputation", { by: 1, where: { id: post.authorId }, transaction: t });
+        if (post.authorId !== req.user.id) {
+          await User.increment("reputation", { by: 1, where: { id: post.authorId }, transaction: t });
+        }
         return { bookmarked: true };
       }
       await Bookmark.destroy({ where: { userId: req.user.id, postId: post.id }, transaction: t });
       await post.decrement("bookmarkCount", { transaction: t });
-      await User.decrement("reputation", { by: 1, where: { id: post.authorId }, transaction: t });
+      if (post.authorId !== req.user.id) {
+        await User.decrement("reputation", { by: 1, where: { id: post.authorId }, transaction: t });
+      }
       return { bookmarked: false };
     });
 

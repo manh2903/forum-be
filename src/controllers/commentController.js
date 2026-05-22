@@ -226,9 +226,9 @@ const likeComment = async (req, res, next) => {
       
       if (created) {
         await comment.increment("likeCount", { transaction: t });
-        await User.increment("reputation", { by: 1, where: { id: comment.authorId }, transaction: t });
         
         if (comment.authorId !== req.user.id) {
+          await User.increment("reputation", { by: 1, where: { id: comment.authorId }, transaction: t });
           const post = await Post.findByPk(comment.postId, { attributes: ['slug'], transaction: t });
           const notif = await Notification.create({
             recipientId: comment.authorId,
@@ -247,7 +247,9 @@ const likeComment = async (req, res, next) => {
 
       await CommentLike.destroy({ where: { userId: req.user.id, commentId: comment.id }, transaction: t });
       await comment.decrement("likeCount", { transaction: t });
-      await User.decrement("reputation", { by: 1, where: { id: comment.authorId }, transaction: t });
+      if (comment.authorId !== req.user.id) {
+        await User.decrement("reputation", { by: 1, where: { id: comment.authorId }, transaction: t });
+      }
       return { liked: false };
     });
 
