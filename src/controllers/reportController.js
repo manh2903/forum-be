@@ -2,6 +2,7 @@ const { Report, User, Post, Comment, Notification, AuditLog } = require("../mode
 const { sequelize } = require("../config/database");
 const { sendNotification, getIO } = require("../socket");
 const { Op } = require("sequelize");
+const { sendBanEmail } = require("../utils/email");
 
 // POST /api/reports
 const createReport = async (req, res, next) => {
@@ -207,6 +208,9 @@ const resolveReport = async (req, res, next) => {
     const report = await Report.findByPk(req.params.id);
     if (!report) return res.status(404).json({ message: "Report not found" });
 
+    let autoBannedUser = null;
+    let autoBanReason = null;
+
     const result = await sequelize.transaction(async (t) => {
       await report.update({ status, resolution, resolvedById: req.user.id, resolvedAt: new Date() }, { transaction: t });
 
@@ -245,10 +249,13 @@ const resolveReport = async (req, res, next) => {
         if (resolvedCount >= 3) {
           const user = await User.findByPk(report.targetOwnerId, { transaction: t });
           if (user && user.role !== "admin" && !user.isBanned) {
+            const banReason = `Tự động khóa do vi phạm >= 3 lần trong vòng 30 ngày (${resolvedCount} vi phạm được xác nhận)`;
             await user.update({ 
               isBanned: true, 
-              banReason: `Tự động khóa do vi phạm >= 3 lần trong vòng 30 ngày (${resolvedCount} vi phạm được xác nhận)` 
+              banReason 
             }, { transaction: t });
+            autoBannedUser = user;
+            autoBanReason = banReason;
 
             // Create system auto ban audit log
             await AuditLog.create({
@@ -294,6 +301,9 @@ const resolveReport = async (req, res, next) => {
     });
 
     sendNotification(report.reporterId, result.notif);
+    if (autoBannedUser) {
+      sendBanEmail(autoBannedUser.email, autoBannedUser.username, autoBanReason);
+    }
     res.json({ report: result.report });
   } catch (err) {
     next(err);

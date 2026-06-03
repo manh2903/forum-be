@@ -3,6 +3,7 @@ const { Op } = require("sequelize");
 const { User, Report, AuditLog, Notification } = require("../models");
 const logger = require("./logger");
 const { sendNotification } = require("../socket");
+const { sendBanEmail } = require("./email");
 
 /**
  * Job tự động quét và khóa tài khoản các user vi phạm >= 3 lần trong vòng 30 ngày.
@@ -22,7 +23,7 @@ async function checkAndAutoBanUsers() {
         isBanned: false,
         isDeleted: false
       },
-      attributes: ["id", "username"]
+      attributes: ["id", "username", "email"]
     });
 
     let banCount = 0;
@@ -38,12 +39,13 @@ async function checkAndAutoBanUsers() {
       });
 
       if (resolvedCount >= 3) {
+        const banReason = `Tự động khóa do có ${resolvedCount} vi phạm được xác nhận trong vòng 30 ngày`;
         // Khóa tài khoản
         await User.sequelize.transaction(async (t) => {
           await User.update(
             { 
               isBanned: true, 
-              banReason: `Tự động khóa do có ${resolvedCount} vi phạm được xác nhận trong vòng 30 ngày` 
+              banReason 
             }, 
             { where: { id: user.id }, transaction: t }
           );
@@ -85,6 +87,9 @@ async function checkAndAutoBanUsers() {
             sendNotification(notif.recipientId, notif);
           });
         });
+
+        // Gửi email lý do bị ban cho user
+        sendBanEmail(user.email, user.username, banReason);
 
         logger.info(`[AutoBanJob] Đã khóa tài khoản user: ${user.username} do vi phạm ${resolvedCount} lần.`);
         banCount++;

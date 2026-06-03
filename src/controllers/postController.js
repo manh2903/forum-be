@@ -7,7 +7,7 @@ const { sendNotification, getIO } = require("../socket");
 // GET /api/posts
 const listPosts = async (req, res, next) => {
   try {
-    const { page = 1, limit = 10, topic, tag, search, sort = "latest", status = "published", bookmarked, authorId } = req.query;
+    const { page = 1, limit = 10, topic, tag, search, sort = "latest", status = "published", bookmarked, liked, authorId } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const where = {};
 
@@ -54,6 +54,16 @@ const listPosts = async (req, res, next) => {
         model: Bookmark,
         as: "bookmarks",
         where: { userId: req.user.id },
+        attributes: [],
+        required: true,
+      });
+    }
+
+    if (liked === "true" && req.user) {
+      include.push({
+        model: User,
+        as: "likedBy",
+        where: { id: req.user.id },
         attributes: [],
         required: true,
       });

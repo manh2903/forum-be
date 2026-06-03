@@ -3,6 +3,7 @@ const { sequelize } = require("../config/database");
 const { User, Post, Comment, Report, AuditLog, Tag, Topic, Notification, SearchHistory } = require("../models");
 const { sendNotification, onlineUsers } = require("../socket");
 const { updateFeaturedPosts } = require("../utils/featuredJob");
+const { sendBanEmail } = require("../utils/email");
 
 // GET /api/admin/users
 const getUsers = async (req, res, next) => {
@@ -48,6 +49,9 @@ const banUser = async (req, res, next) => {
       }, { transaction: t });
       return user;
     });
+
+    // Gửi email lý do bị ban cho user
+    sendBanEmail(updatedUser.email, updatedUser.username, banReason);
 
     res.json({ message: "User banned", user: updatedUser });
   } catch (err) {
@@ -225,6 +229,43 @@ const togglePostStatus = async (req, res, next) => {
 const getAnalytics = async (req, res, next) => {
   try {
     const { sequelize } = require("../config/database");
+    const { range = "week", fromDate, toDate } = req.query;
+
+    let finalFromDate;
+    let finalToDate;
+
+    // 1. Calculate dates based on range/dateRange
+    let quickFilterStartDate = null;
+    if (range === "day") {
+      quickFilterStartDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    } else if (range === "week") {
+      quickFilterStartDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    } else if (range === "month") {
+      quickFilterStartDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    } else if (range === "year") {
+      quickFilterStartDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+    }
+
+    if (fromDate && toDate) {
+      finalFromDate = new Date(fromDate);
+      finalFromDate.setHours(0, 0, 0, 0);
+      finalToDate = new Date(toDate);
+      finalToDate.setHours(23, 59, 59, 999);
+    } else {
+      finalToDate = new Date();
+      finalFromDate = quickFilterStartDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      finalFromDate.setHours(0, 0, 0, 0);
+    }
+
+    // Determine grouping format based on date range duration
+    const diffTime = Math.abs(finalToDate - finalFromDate);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    let dateFormat = "%Y-%m-%d";
+    if (diffDays <= 1) {
+      dateFormat = "%Y-%m-%d %H:00";
+    } else if (diffDays > 31) {
+      dateFormat = "%Y-%m";
+    }
 
     const [userCount, postCount, commentCount, reportCount] = await Promise.all([
       User.count(),
@@ -233,73 +274,76 @@ const getAnalytics = async (req, res, next) => {
       Report.count({ where: { status: "pending" } }),
     ]);
 
-    // Top posts
+    // Top posts (only quick filter)
+    const topPostsWhere = { status: "published" };
+    if (quickFilterStartDate) {
+      topPostsWhere.createdAt = { [Op.gte]: quickFilterStartDate };
+    }
     const topPosts = await Post.findAll({
-      where: { status: "published" },
+      where: topPostsWhere,
       attributes: ["id", "title", "slug", "likeCount", "viewCount", "commentCount", "createdAt"],
       order: [["viewCount", "DESC"]],
       limit: 5,
     });
 
-    // Top users by reputation
+    // Top users by reputation (only quick filter)
+    const topUsersWhere = {};
+    if (quickFilterStartDate) {
+      topUsersWhere.createdAt = { [Op.gte]: quickFilterStartDate };
+    }
     const topUsers = await User.findAll({
+      where: topUsersWhere,
       attributes: ["id", "username", "avatar", "reputation", "role"],
       order: [["reputation", "DESC"]],
       limit: 5,
     });
 
-    // Recent activity (last 7 days)
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
+    // Recent activity / change chip count (uses fromDate & toDate range)
     const [newUsers, newPosts] = await Promise.all([
-      User.count({ where: { createdAt: { [Op.gte]: sevenDaysAgo } } }),
-      Post.count({ where: { status: "published", createdAt: { [Op.gte]: sevenDaysAgo } } }),
+      User.count({ where: { createdAt: { [Op.between]: [finalFromDate, finalToDate] } } }),
+      Post.count({ where: { status: "published", createdAt: { [Op.between]: [finalFromDate, finalToDate] } } }),
     ]);
 
-    // Growth chart (last 30 days)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
+    // Growth charts (use fromDate & toDate range)
     const [userGrowth, postGrowth, reportGrowth, resolvedGrowth, postStats] = await Promise.all([
       User.findAll({
-        where: { createdAt: { [Op.gte]: thirtyDaysAgo } },
+        where: { createdAt: { [Op.between]: [finalFromDate, finalToDate] } },
         attributes: [
-          [fn("DATE", col("createdAt")), "date"],
+          [fn("DATE_FORMAT", col("createdAt"), dateFormat), "date"],
           [fn("COUNT", col("id")), "count"],
         ],
-        group: [fn("DATE", col("createdAt"))],
-        order: [[fn("DATE", col("createdAt")), "ASC"]],
+        group: [fn("DATE_FORMAT", col("createdAt"), dateFormat)],
+        order: [[fn("DATE_FORMAT", col("createdAt"), dateFormat), "ASC"]],
         raw: true,
       }),
       Post.findAll({
-        where: { status: "published", createdAt: { [Op.gte]: thirtyDaysAgo } },
+        where: { status: "published", createdAt: { [Op.between]: [finalFromDate, finalToDate] } },
         attributes: [
-          [fn("DATE", col("createdAt")), "date"],
+          [fn("DATE_FORMAT", col("createdAt"), dateFormat), "date"],
           [fn("COUNT", col("id")), "count"],
         ],
-        group: [fn("DATE", col("createdAt"))],
-        order: [[fn("DATE", col("createdAt")), "ASC"]],
+        group: [fn("DATE_FORMAT", col("createdAt"), dateFormat)],
+        order: [[fn("DATE_FORMAT", col("createdAt"), dateFormat), "ASC"]],
         raw: true,
       }),
       Report.findAll({
-        where: { isDeleted: false, createdAt: { [Op.gte]: thirtyDaysAgo } },
+        where: { isDeleted: false, createdAt: { [Op.between]: [finalFromDate, finalToDate] } },
         attributes: [
-          [fn("DATE", col("createdAt")), "date"],
+          [fn("DATE_FORMAT", col("createdAt"), dateFormat), "date"],
           [fn("COUNT", col("id")), "count"],
         ],
-        group: [fn("DATE", col("createdAt"))],
-        order: [[fn("DATE", col("createdAt")), "ASC"]],
+        group: [fn("DATE_FORMAT", col("createdAt"), dateFormat)],
+        order: [[fn("DATE_FORMAT", col("createdAt"), dateFormat), "ASC"]],
         raw: true,
       }),
       Report.findAll({
-        where: { isDeleted: false, status: "resolved", resolvedAt: { [Op.gte]: thirtyDaysAgo } },
+        where: { isDeleted: false, status: "resolved", resolvedAt: { [Op.between]: [finalFromDate, finalToDate] } },
         attributes: [
-          [fn("DATE", col("resolvedAt")), "date"],
+          [fn("DATE_FORMAT", col("resolvedAt"), dateFormat), "date"],
           [fn("COUNT", col("id")), "count"],
         ],
-        group: [fn("DATE", col("resolvedAt"))],
-        order: [[fn("DATE", col("resolvedAt")), "ASC"]],
+        group: [fn("DATE_FORMAT", col("resolvedAt"), dateFormat)],
+        order: [[fn("DATE_FORMAT", col("resolvedAt"), dateFormat), "ASC"]],
         raw: true,
       }),
       Post.findOne({
@@ -316,18 +360,34 @@ const getAnalytics = async (req, res, next) => {
     const totalLikes = postStats?.totalLikes || 0;
     const engagementRate = totalViews > 0 ? (totalLikes / totalViews) * 100 : 0;
 
-    // Top Tags
+    // Top Tags (only quick filter)
+    const tagPostWhere = { isDeleted: false };
+    if (quickFilterStartDate) {
+      tagPostWhere.createdAt = { [Op.gte]: quickFilterStartDate };
+    }
     const topTags = await Tag.findAll({
       attributes: ["id", "name", [fn("COUNT", col("posts.id")), "postCount"]],
-      include: [{ model: Post, as: "posts", attributes: [], through: { attributes: [] } }],
+      include: [{ 
+        model: Post, 
+        as: "posts", 
+        attributes: [], 
+        through: { attributes: [] },
+        where: tagPostWhere,
+        required: true
+      }],
       group: ["Tag.id"],
       order: [[fn("COUNT", col("posts.id")), "DESC"]],
       limit: 10,
       subQuery: false
     });
 
-    // Top Searches
+    // Top Searches (only quick filter)
+    const searchesWhere = {};
+    if (quickFilterStartDate) {
+      searchesWhere.createdAt = { [Op.gte]: quickFilterStartDate };
+    }
     const topSearches = await SearchHistory.findAll({
+      where: searchesWhere,
       attributes: [
         "query",
         [fn("COUNT", col("query")), "count"],
@@ -339,7 +399,11 @@ const getAnalytics = async (req, res, next) => {
       raw: true
     });
 
-    // Engagement by Topic
+    // Engagement by Topic (only quick filter)
+    const engagementWhere = { isDeleted: false };
+    if (quickFilterStartDate) {
+      engagementWhere.createdAt = { [Op.gte]: quickFilterStartDate };
+    }
     const engagementByTopic = await Post.findAll({
       attributes: [
         "topicId",
@@ -351,7 +415,7 @@ const getAnalytics = async (req, res, next) => {
         [fn("SUM", col("likeCount")), "totalLikes"]
       ],
       include: [{ model: Topic, as: "topic", attributes: ["name"] }],
-      where: { isDeleted: false },
+      where: engagementWhere,
       group: ["topicId", "topic.id"],
       order: [[fn("COUNT", col("Post.id")), "DESC"]],
       raw: true,
